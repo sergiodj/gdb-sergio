@@ -144,6 +144,21 @@ inf_child_remove_exec_catchpoint (int pid)
   return 0;
 }
 
+static void
+inf_child_insert_syscall_catchpoint (int pid)
+{
+  /* This version of Unix doesn't support notification of syscall
+     events.  */
+}
+
+static int
+inf_child_remove_syscall_catchpoint (int pid)
+{
+  /* This version of Unix doesn't support notification of syscall
+     events.  */
+  return 0;
+}
+
 static int
 inf_child_can_run (void)
 {
@@ -187,6 +202,8 @@ inf_child_target (void)
   t->to_follow_fork = inf_child_follow_fork;
   t->to_insert_exec_catchpoint = inf_child_insert_exec_catchpoint;
   t->to_remove_exec_catchpoint = inf_child_remove_exec_catchpoint;
+  t->to_insert_syscall_catchpoint = inf_child_insert_syscall_catchpoint;
+  t->to_remove_syscall_catchpoint = inf_child_remove_syscall_catchpoint;
   t->to_can_run = inf_child_can_run;
   t->to_pid_to_exec_file = inf_child_pid_to_exec_file;
   t->to_stratum = process_stratum;

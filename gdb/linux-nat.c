@@ -269,6 +269,11 @@ struct simple_pid_list *stopped_pids;
 
 static int linux_supports_tracefork_flag = -1;
 
+/* This variable is a tri-state flag: -1 for unknown, 0 if PTRACE_O_TRACESYSGOOD
+   can not be used, 1 if it can.  */
+
+static int linux_supports_tracesysgood_flag = -1;
+
 /* If we have PTRACE_O_TRACEFORK, this flag indicates whether we also have
    PTRACE_O_TRACEVFORKDONE.  */
 
@@ -612,6 +617,37 @@ linux_test_for_tracefork (int original_pid)
   linux_nat_async_events (async_events_original_state);
 }
 
+/* Determine if PTRACE_O_TRACESYSGOOD can be used to follow syscalls.
+
+   First, we try to enable syscall tracing on ORIGINAL_PID. If this fails,
+   we know that the feature is not available. This may change the tracing
+   options for ORIGINAL_PID, but we'll be setting them shortly anyway. */
+
+static void
+linux_test_for_tracesysgood (int original_pid)
+{
+  int ret;
+
+  linux_supports_tracesysgood_flag = 0;
+
+  ret = ptrace (PTRACE_SETOPTIONS, original_pid, 0, PTRACE_O_TRACESYSGOOD);
+  if (ret != 0)
+    return;
+
+  linux_supports_tracesysgood_flag = 1;
+}
+
+/* Determine wether we support PTRACE_O_TRACESYSGOOD
+ * option available. This function also sets */
+
+static int
+linux_supports_tracesysgood (int pid)
+{
+  if (linux_supports_tracesysgood_flag == -1)
+    linux_test_for_tracesysgood (pid);
+  return linux_supports_tracesysgood_flag;
+}
+
 /* Return non-zero iff we have tracefork functionality available.
    This function also sets linux_supports_tracefork_flag.  */
 
@@ -646,6 +682,9 @@ linux_enable_event_reporting (ptid_t ptid)
 
   options = PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK | PTRACE_O_TRACEEXEC
     | PTRACE_O_TRACECLONE;
+
+  if (linux_supports_tracesysgood (pid))
+    options |= PTRACE_O_TRACESYSGOOD;
   if (linux_supports_tracevforkdone (pid))
     options |= PTRACE_O_TRACEVFORKDONE;
 
@@ -865,6 +904,21 @@ linux_child_insert_exec_catchpoint (int pid)
 {
   if (!linux_supports_tracefork (pid))
     error (_("Your system does not support exec catchpoints."));
+}
+
+static void
+linux_child_insert_syscall_catchpoint (int pid)
+{
+  if (! linux_supports_tracesysgood (pid))
+    error (_("Your system does not support syscall catchpoints."));
+  catching_syscalls = 1;
+}
+
+static int
+linux_child_remove_syscall_catchpoint (int pid)
+{
+  catching_syscalls = 0;
+  return 0;
 }
 
 /* On GNU/Linux there are no real LWP's.  The closest thing to LWP's
@@ -1786,6 +1840,14 @@ linux_handle_extended_wait (struct lwp_info *lp, int status,
   struct lwp_info *new_lp = NULL;
   int event = status >> 16;
 
+  if (WSTOPSIG (status) == (SIGTRAP | 0x80))
+    {
+      ourstatus->kind = TARGET_WAITKIND_SYSCALL_ENTRY;
+      ourstatus->value.syscall_name =
+        xstrdup ("syscall test sergio");
+      return 0;
+    }
+
   if (event == PTRACE_EVENT_FORK || event == PTRACE_EVENT_VFORK
       || event == PTRACE_EVENT_CLONE)
     {
@@ -2525,11 +2587,16 @@ linux_nat_filter_event (int lwpid, int status, int options)
     }
 
   /* Save the trap's siginfo in case we need it later.  */
-  if (WIFSTOPPED (status) && WSTOPSIG (status) == SIGTRAP)
+  if (WIFSTOPPED (status)
+      && (WSTOPSIG (status) == SIGTRAP || WSTOPSIG (status) == (SIGTRAP | 0x80)))
     save_siginfo (lp);
 
-  /* Handle GNU/Linux's extended waitstatus for trace events.  */
-  if (WIFSTOPPED (status) && WSTOPSIG (status) == SIGTRAP && status >> 16 != 0)
+  /* Handle GNU/Linux's extended waitstatus for trace events.
+     It is necessary to check if WSTOPSIG is signaling a that
+     the inferior is entering/exiting a system call. */
+  if (WIFSTOPPED (status)
+      && ((WSTOPSIG (status) == (SIGTRAP | 0x80))
+          || (WSTOPSIG (status) == SIGTRAP && status >> 16 != 0)))
     {
       if (debug_linux_nat)
 	fprintf_unfiltered (gdb_stdlog,
@@ -3959,6 +4026,8 @@ linux_target_install_ops (struct target_ops *t)
   t->to_insert_fork_catchpoint = linux_child_insert_fork_catchpoint;
   t->to_insert_vfork_catchpoint = linux_child_insert_vfork_catchpoint;
   t->to_insert_exec_catchpoint = linux_child_insert_exec_catchpoint;
+  t->to_insert_syscall_catchpoint = linux_child_insert_syscall_catchpoint;
+  t->to_remove_syscall_catchpoint = linux_child_remove_syscall_catchpoint;
   t->to_pid_to_exec_file = linux_child_pid_to_exec_file;
   t->to_post_startup_inferior = linux_child_post_startup_inferior;
   t->to_post_attach = linux_child_post_attach;

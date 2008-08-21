@@ -787,6 +787,9 @@ insert_catchpoint (struct ui_out *uo, void *args)
     case bp_catch_exec:
       target_insert_exec_catchpoint (PIDGET (inferior_ptid));
       break;
+    case bp_catch_syscall:
+      target_insert_syscall_catchpoint (PIDGET (inferior_ptid));
+      break;
     default:
       internal_error (__FILE__, __LINE__, _("unknown breakpoint type"));
       break;
@@ -1227,7 +1230,8 @@ Note: automatically using hardware breakpoints for read-only addresses.\n"));
 
   else if (bpt->owner->type == bp_catch_fork
 	   || bpt->owner->type == bp_catch_vfork
-	   || bpt->owner->type == bp_catch_exec)
+	   || bpt->owner->type == bp_catch_exec
+	   || bpt->owner->type == bp_catch_syscall)
     {
       struct gdb_exception e = catch_exception (uiout, insert_catchpoint,
 						bpt->owner, RETURN_MASK_ERROR);
@@ -1678,6 +1682,9 @@ remove_breakpoint (struct bp_location *b, insertion_state_t is)
 	case bp_catch_exec:
 	  val = target_remove_exec_catchpoint (PIDGET (inferior_ptid));
 	  break;
+        case bp_catch_syscall:
+          val = target_remove_syscall_catchpoint (PIDGET (inferior_ptid));
+          break;
 	default:
 	  warning (_("Internal error, %s line %d."), __FILE__, __LINE__);
 	  break;
@@ -1926,7 +1933,8 @@ ep_is_catchpoint (struct breakpoint *ep)
     || (ep->type == bp_catch_unload)
     || (ep->type == bp_catch_fork)
     || (ep->type == bp_catch_vfork)
-    || (ep->type == bp_catch_exec);
+    || (ep->type == bp_catch_exec)
+    || (ep->type == bp_catch_syscall);
 
   /* ??rehrauer: Add more kinds here, as are implemented... */
 }
@@ -2329,6 +2337,14 @@ print_it_typical (bpstat bs)
       printf_filtered (_("\nCatchpoint %d (exec'd %s), "),
 		       b->number,
 		       b->exec_pathname);
+      return PRINT_SRC_AND_LOC;
+      break;
+
+    case bp_catch_syscall:
+      annotate_catchpoint (b->number);
+      printf_filtered (_("\nCatchpoint %d (syscalled %s), "),
+		       b->number,
+		       b->syscall_name);
       return PRINT_SRC_AND_LOC;
       break;
 
@@ -2752,7 +2768,8 @@ bpstat_check_location (const struct bp_location *bl, CORE_ADDR bp_addr)
       && b->type != bp_hardware_breakpoint
       && b->type != bp_catch_fork
       && b->type != bp_catch_vfork
-      && b->type != bp_catch_exec)	/* a non-watchpoint bp */
+      && b->type != bp_catch_exec
+      && b->type != bp_catch_syscall)	/* a non-watchpoint bp */
     {
       if (bl->address != bp_addr) 	/* address doesn't match */
 	return 0;
@@ -2824,6 +2841,10 @@ bpstat_check_location (const struct bp_location *bl, CORE_ADDR bp_addr)
   
   if ((b->type == bp_catch_exec)
       && !inferior_has_execd (inferior_ptid, &b->exec_pathname))
+    return 0;
+
+  if ((b->type == bp_catch_syscall)
+      && !inferior_has_syscalled (inferior_ptid, &b->syscall_name))
     return 0;
 
   return 1;
@@ -3346,6 +3367,7 @@ bpstat_what (bpstat bs)
 	case bp_catch_fork:
 	case bp_catch_vfork:
 	case bp_catch_exec:
+        case bp_catch_syscall:
 	  if (bs->stop)
 	    {
 	      if (bs->print)
@@ -3527,7 +3549,8 @@ print_one_breakpoint_location (struct breakpoint *b,
     {bp_catch_unload, "catch unload"},
     {bp_catch_fork, "catch fork"},
     {bp_catch_vfork, "catch vfork"},
-    {bp_catch_exec, "catch exec"}
+    {bp_catch_exec, "catch exec"},
+    {bp_catch_syscall, "catch syscall"}
   };
   
   static char bpenables[] = "nynny";
@@ -3689,6 +3712,21 @@ print_one_breakpoint_location (struct breakpoint *b,
 	  {
 	    ui_out_text (uiout, "program \"");
 	    ui_out_field_string (uiout, "what", b->exec_pathname);
+	    ui_out_text (uiout, "\" ");
+	  }
+	break;
+
+      case bp_catch_syscall:
+	/* Field 4, the address, is omitted (which makes the columns
+	   not line up too nicely with the headers, but the effect
+	   is relatively readable).  */
+	if (addressprint)
+	  ui_out_field_skip (uiout, "addr");
+	annotate_field (5);
+	if (b->syscall_name != NULL)
+	  {
+	    ui_out_text (uiout, "program \"");
+	    ui_out_field_string (uiout, "what", b->syscall_name);
 	    ui_out_text (uiout, "\" ");
 	  }
 	break;
@@ -3894,6 +3932,7 @@ user_settable_breakpoint (const struct breakpoint *b)
 	  || b->type == bp_catch_fork
 	  || b->type == bp_catch_vfork
 	  || b->type == bp_catch_exec
+          || b->type == bp_catch_syscall
 	  || b->type == bp_hardware_breakpoint
 	  || b->type == bp_watchpoint
 	  || b->type == bp_read_watchpoint
@@ -4098,6 +4137,7 @@ set_default_breakpoint (int valid, CORE_ADDR addr, struct symtab *symtab,
       bp_hardware_watchpoint
       bp_read_watchpoint
       bp_access_watchpoint
+      bp_catch_syscall
       bp_catch_exec
       bp_catch_fork
       bp_catch_vork */
@@ -4111,6 +4151,7 @@ breakpoint_address_is_meaningful (struct breakpoint *bpt)
 	  && type != bp_hardware_watchpoint
 	  && type != bp_read_watchpoint
 	  && type != bp_access_watchpoint
+          && type != bp_catch_syscall
 	  && type != bp_catch_exec
 	  && type != bp_catch_fork
 	  && type != bp_catch_vfork);
@@ -4230,7 +4271,8 @@ adjust_breakpoint_address (CORE_ADDR bpaddr, enum bptype bptype)
            || bptype == bp_access_watchpoint
            || bptype == bp_catch_fork
            || bptype == bp_catch_vfork
-           || bptype == bp_catch_exec)
+           || bptype == bp_catch_exec
+	   || bptype == bp_catch_syscall)
     {
       /* Watchpoints and the various bp_catch_* eventpoints should not
          have their addresses modified.  */
@@ -4299,6 +4341,7 @@ allocate_bp_location (struct breakpoint *bpt, enum bptype bp_type)
     case bp_catch_fork:
     case bp_catch_vfork:
     case bp_catch_exec:
+    case bp_catch_syscall:
       loc->loc_type = bp_loc_other;
       break;
     default:
@@ -4757,6 +4800,32 @@ create_exec_event_catchpoint (int tempflag, char *cond_string)
   mention (b);
 }
 
+static void
+create_syscall_event_catchpoint (int tempflag, char *cond_string)
+{
+  struct symtab_and_line sal;
+  struct breakpoint *b;
+  int thread = -1;		/* All threads. */
+
+  init_sal (&sal);
+  sal.pc = 0;
+  sal.symtab = NULL;
+  sal.line = 0;
+
+  b = set_raw_breakpoint (sal, bp_catch_syscall);
+  set_breakpoint_count (breakpoint_count + 1);
+  b->number = breakpoint_count;
+  b->cond_string = (cond_string == NULL) ?
+    NULL : savestring (cond_string, strlen (cond_string));
+  b->thread = thread;
+  b->addr_string = NULL;
+  b->enable_state = bp_enabled;
+  b->disposition = tempflag ? disp_del : disp_donttouch;
+  update_global_location_list (1);
+
+  mention (b);
+}
+
 static int
 hw_breakpoint_used_count (void)
 {
@@ -4972,6 +5041,10 @@ mention (struct breakpoint *b)
 	break;
       case bp_catch_exec:
 	printf_filtered (_("Catchpoint %d (exec)"),
+			 b->number);
+	break;
+      case bp_catch_syscall:
+	printf_filtered (_("Catchpoint %d (syscall)"),
 			 b->number);
 	break;
 
@@ -6681,6 +6754,31 @@ catch_ada_exception_command (char *arg, int tempflag, int from_tty)
                                    from_tty);
 }
 
+/* Implement the "catch syscall" command. */
+
+static void
+catch_syscall_command_1 (char *arg, int tempflag, int from_tty)
+{
+  char *cond_string = NULL;
+
+  ep_skip_leading_whitespace (&arg);
+
+  /* The allowed syntax is:
+     catch syscall
+     catch syscall if <cond>
+
+     Let's check if there's an if clause. */
+  cond_string = ep_parse_optional_if_clause (&arg);
+
+  if ((*arg != '\0') && !isspace (*arg))
+    {
+    error (_("Junk at end of arguments."));
+    }
+
+  /* Now let's create the catchpoint */
+  create_syscall_event_catchpoint (tempflag, cond_string);
+}
+
 /* Implement the "catch assert" command.  */
 
 static void
@@ -6785,6 +6883,10 @@ catch_command_1 (char *arg, int tempflag, int from_tty)
   else if (strncmp (arg1_start, "exception", arg1_length) == 0)
     {
       catch_ada_exception_command (arg1_end + 1, tempflag, from_tty);
+    }
+  else if (strncmp (arg1_start, "syscall", arg1_length) == 0)
+    {
+      catch_syscall_command_1 (arg1_end + 1, tempflag, from_tty);
     }
 
   else if (strncmp (arg1_start, "assert", arg1_length) == 0)
@@ -7608,6 +7710,7 @@ breakpoint_re_set_one (void *bint)
     case bp_catch_fork:
     case bp_catch_vfork:
     case bp_catch_exec:
+    case bp_catch_syscall:
       break;
 
     default:
@@ -7881,6 +7984,7 @@ disable_command (char *args, int from_tty)
       case bp_catch_fork:
       case bp_catch_vfork:
       case bp_catch_exec:
+      case bp_catch_syscall:
       case bp_hardware_breakpoint:
       case bp_watchpoint:
       case bp_hardware_watchpoint:
@@ -8015,6 +8119,7 @@ enable_command (char *args, int from_tty)
       case bp_catch_fork:
       case bp_catch_vfork:
       case bp_catch_exec:
+      case bp_catch_syscall:
       case bp_hardware_breakpoint:
       case bp_watchpoint:
       case bp_hardware_watchpoint:
@@ -8499,6 +8604,7 @@ Process events may be caught:\n\
 \tcatch fork                - calls to fork()\n\
 \tcatch vfork               - calls to vfork()\n\
 \tcatch exec                - calls to exec()\n\
+\tcatch syscall             - calls to a system call\n\
 Dynamically-linked library events may be caught:\n\
 \tcatch load                - loads of any library\n\
 \tcatch load <libname>      - loads of a particular library\n\

@@ -127,6 +127,10 @@ enum bptype
     bp_catch_fork,
     bp_catch_vfork,
     bp_catch_exec,
+
+    /* This is not really a breakpoint, but the catchpoint which implements
+       the "catch syscall" functionality. */
+    bp_catch_syscall,
   };
 
 /* States of enablement of breakpoint. */
@@ -454,6 +458,11 @@ struct breakpoint
        This field is only valid immediately after this catchpoint has
        triggered.  */
     char *exec_pathname;
+
+    /* Syscall name used for the 'catch syscall' feature.
+       This field is only valid immediately after this catchpoint has
+       triggered.  */
+    char *syscall_name;
 
     /* Methods associated with this breakpoint.  */
     struct breakpoint_ops *ops;

@@ -83,6 +83,18 @@ static int prepare_to_proceed (int);
 
 void _initialize_infrun (void);
 
+/* This variable will be used to sign wether we
+   are in a 'catch syscall' command.
+   Nonzero if we are, zero otherwise. */
+
+int catching_syscalls = 0;
+
+static int
+catch_syscall_enabled ()
+{
+  return catching_syscalls != 0;
+}
+
 /* When set, stop the 'step' command if we enter a function which has
    no line number information.  The normal behavior is that we step
    over such function.  */
@@ -325,6 +337,7 @@ static struct
   }
   fork_event;
   char *execd_pathname;
+  char *syscall_name;
 }
 pending_follow;
 
@@ -992,7 +1005,7 @@ a command like `return' or `jump' to continue execution."));
         }
     }
 
-  /* If there were any forks/vforks/execs that were caught and are
+  /* If there were any forks/vforks/execs/syscalls that were caught and are
      now to be followed, then do so.  */
   switch (pending_follow.kind)
     {
@@ -1005,6 +1018,11 @@ a command like `return' or `jump' to continue execution."));
 
     case TARGET_WAITKIND_EXECD:
       /* follow_exec is called as soon as the exec event is seen. */
+      pending_follow.kind = TARGET_WAITKIND_SPURIOUS;
+      break;
+
+    case TARGET_WAITKIND_SYSCALL_ENTRY:
+    case TARGET_WAITKIND_SYSCALL_RETURN:
       pending_follow.kind = TARGET_WAITKIND_SPURIOUS;
       break;
 
@@ -1375,7 +1393,7 @@ init_wait_for_inferior (void)
   /* Don't confuse first call to proceed(). */
   stop_signal = TARGET_SIGNAL_0;
 
-  /* The first resume is not following a fork/vfork/exec. */
+  /* The first resume is not following a fork/vfork/exec/syscall. */
   pending_follow.kind = TARGET_WAITKIND_SPURIOUS;	/* I.e., none. */
 
   clear_proceed_status ();
@@ -2088,9 +2106,44 @@ handle_inferior_event (struct execution_control_state *ecs)
     case TARGET_WAITKIND_SYSCALL_ENTRY:
       if (debug_infrun)
         fprintf_unfiltered (gdb_stdlog, "infrun: TARGET_WAITKIND_SYSCALL_ENTRY\n");
-      resume (0, TARGET_SIGNAL_0);
-      prepare_to_wait (ecs);
-      return;
+      if (catch_syscall_enabled ())
+        {
+          stop_signal = TARGET_SIGNAL_TRAP;
+          pending_follow.kind = ecs->ws.kind;
+
+          /* XXX: TEMPORARY */
+          pending_follow.syscall_name = NULL;
+
+/*          pending_follow.fork_event.parent_pid = ecs->ptid;
+          pending_follow.fork_event.child_pid = ecs->ws.value.related_pid; */
+
+          if (!ptid_equal (ecs->ptid, inferior_ptid))
+            {
+              context_switch (ecs->ptid);
+              reinit_frame_cache ();
+            }
+
+          stop_pc = read_pc ();
+
+          stop_bpstat = bpstat_stop_status (stop_pc, ecs->ptid);
+
+          ecs->random_signal = !bpstat_explains_signal (stop_bpstat);
+
+          /* If no catchpoint triggered for this, then keep going.  */
+          if (ecs->random_signal)
+            {
+              stop_signal = TARGET_SIGNAL_0;
+              keep_going (ecs);
+              return;
+            }
+          goto process_event_stop_test;
+        }
+      else
+        {
+          resume (0, TARGET_SIGNAL_0);
+          prepare_to_wait (ecs);
+          return;
+        }
 
       /* Before examining the threads further, step this thread to
          get it entirely out of the syscall.  (We get notice of the
@@ -4534,6 +4587,25 @@ inferior_has_execd (ptid_t pid, char **execd_pathname)
     return 0;
 
   *execd_pathname = xstrdup (last.value.execd_pathname);
+  return 1;
+}
+
+int
+inferior_has_syscalled (ptid_t pid, char **syscall_name)
+{
+  struct target_waitstatus last;
+  ptid_t last_ptid;
+
+  get_last_target_status (&last_ptid, &last);
+
+  if (last.kind != TARGET_WAITKIND_SYSCALL_ENTRY &&
+      last.kind != TARGET_WAITKIND_SYSCALL_RETURN)
+    return 0;
+
+  if (!ptid_equal (last_ptid, pid))
+    return 0;
+
+  *syscall_name = xstrdup (last.value.syscall_name);
   return 1;
 }
 

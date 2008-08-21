@@ -135,13 +135,15 @@ struct target_waitstatus
   {
     enum target_waitkind kind;
 
-    /* Forked child pid, execd pathname, exit status or signal number.  */
+    /* Forked child pid, execd pathname, exit status, signal number or
+       syscall name. */
     union
       {
 	int integer;
 	enum target_signal sig;
 	ptid_t related_pid;
 	char *execd_pathname;
+	char *syscall_name;
 	int syscall_id;
       }
     value;
@@ -393,6 +395,8 @@ struct target_ops
     int (*to_follow_fork) (struct target_ops *, int);
     void (*to_insert_exec_catchpoint) (int);
     int (*to_remove_exec_catchpoint) (int);
+    void (*to_insert_syscall_catchpoint) (int);
+    int (*to_remove_syscall_catchpoint) (int);
     int (*to_has_exited) (int, int, int *);
     void (*to_mourn_inferior) (void);
     int (*to_can_run) (void);
@@ -707,6 +711,8 @@ extern int inferior_has_vforked (ptid_t pid, ptid_t *child_pid);
 
 extern int inferior_has_execd (ptid_t pid, char **execd_pathname);
 
+extern int inferior_has_syscalled (ptid_t pid, char **syscall_name);
+
 /* From exec.c */
 
 extern void print_section_info (struct target_ops *, bfd *);
@@ -865,6 +871,15 @@ int target_follow_fork (int follow_child);
 
 #define target_remove_exec_catchpoint(pid) \
      (*current_target.to_remove_exec_catchpoint) (pid)
+
+/* Syscall catch functions */
+
+#define target_insert_syscall_catchpoint(pid) \
+	(*current_target.to_insert_syscall_catchpoint) (pid)
+
+#define target_remove_syscall_catchpoint(pid) \
+	(*current_target.to_remove_syscall_catchpoint) (pid)
+
 
 /* Returns TRUE if PID has exited.  And, also sets EXIT_STATUS to the
    exit code of PID, if any.  */
