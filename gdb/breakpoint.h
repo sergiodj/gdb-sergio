@@ -459,10 +459,20 @@ struct breakpoint
        triggered.  */
     char *exec_pathname;
 
-    /* Syscall name used for the 'catch syscall' feature.
+    /* Syscall number used for the 'catch syscall' feature.
+       If no syscall has been called, its value is less than zero.
+       Otherwise, it holds the system call number in the host.
+
        This field is only valid immediately after this catchpoint has
        triggered.  */
-    char *syscall_name;
+    int syscall_number;
+
+    /* This field is used when we are "filtering" the syscalls
+       (i.e., when the user types "catch syscall <SYSCALL_NAME>".
+
+       It stores the syscall number in case we are in the "filter mode",
+       or -1 otherwise. */
+    int syscall_to_be_catched;
 
     /* Methods associated with this breakpoint.  */
     struct breakpoint_ops *ops;
@@ -890,5 +900,9 @@ extern int breakpoints_always_inserted_mode (void);
    Retires previously deleted breakpoint locations that
    in our opinion won't ever trigger.  */
 extern void breakpoint_retire_moribund (void);
+
+/* Check if we are catching syscalls or not.
+   Returns 0 if not, greater than 0 if we are. */
+extern int catch_syscall_enabled (void);
 
 #endif /* !defined (BREAKPOINT_H) */

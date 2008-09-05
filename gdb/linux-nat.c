@@ -57,6 +57,10 @@
 # endif
 #endif /* HAVE_PERSONALITY */
 
+/* To be used when one needs to know wether a
+   WSTOPSIG (status) is a syscall */
+#define TRAP_IS_SYSCALL (SIGTRAP | 0x80)
+
 /* This comment documents high-level logic of this file. 
 
 Waiting for events in sync mode
@@ -627,6 +631,9 @@ static void
 linux_test_for_tracesysgood (int original_pid)
 {
   int ret;
+  enum sigchld_state async_events_original_state;
+
+  async_events_original_state = linux_nat_async_events (sigchld_sync);
 
   linux_supports_tracesysgood_flag = 0;
 
@@ -635,6 +642,7 @@ linux_test_for_tracesysgood (int original_pid)
     return;
 
   linux_supports_tracesysgood_flag = 1;
+  linux_nat_async_events (async_events_original_state);
 }
 
 /* Determine wether we support PTRACE_O_TRACESYSGOOD
@@ -684,7 +692,8 @@ linux_enable_event_reporting (ptid_t ptid)
     | PTRACE_O_TRACECLONE;
 
   if (linux_supports_tracesysgood (pid))
-    options |= PTRACE_O_TRACESYSGOOD;
+      if (catch_syscall_enabled () != 0)
+        options |= PTRACE_O_TRACESYSGOOD;
   if (linux_supports_tracevforkdone (pid))
     options |= PTRACE_O_TRACEVFORKDONE;
 
@@ -911,13 +920,13 @@ linux_child_insert_syscall_catchpoint (int pid)
 {
   if (! linux_supports_tracesysgood (pid))
     error (_("Your system does not support syscall catchpoints."));
-  catching_syscalls = 1;
+  linux_enable_event_reporting (pid_to_ptid (pid));
 }
 
 static int
 linux_child_remove_syscall_catchpoint (int pid)
 {
-  catching_syscalls = 0;
+  linux_enable_event_reporting (pid_to_ptid (pid));
   return 0;
 }
 
@@ -1840,11 +1849,18 @@ linux_handle_extended_wait (struct lwp_info *lp, int status,
   struct lwp_info *new_lp = NULL;
   int event = status >> 16;
 
-  if (WSTOPSIG (status) == (SIGTRAP | 0x80))
+  if (WSTOPSIG (status) == TRAP_IS_SYSCALL)
     {
-      ourstatus->kind = TARGET_WAITKIND_SYSCALL_ENTRY;
-      ourstatus->value.syscall_name =
-        xstrdup ("syscall test sergio");
+      struct regcache *regcache = get_thread_regcache (lp->ptid);
+      struct gdbarch *gdbarch = get_regcache_arch (regcache);
+      struct thread_info *th_info = find_thread_pid (lp->ptid);
+
+      ourstatus->kind = 
+        (th_info->syscall_state == TARGET_WAITKIND_SYSCALL_ENTRY) ?
+         TARGET_WAITKIND_SYSCALL_RETURN : TARGET_WAITKIND_SYSCALL_ENTRY;
+      th_info->syscall_state = ourstatus->kind;
+      ourstatus->value.syscall_number =
+        (int) gdbarch_get_syscall_number (gdbarch, lp->ptid);
       return 0;
     }
 

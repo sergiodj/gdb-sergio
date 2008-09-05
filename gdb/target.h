@@ -143,8 +143,7 @@ struct target_waitstatus
 	enum target_signal sig;
 	ptid_t related_pid;
 	char *execd_pathname;
-	char *syscall_name;
-	int syscall_id;
+	int syscall_number;
       }
     value;
   };
@@ -711,7 +710,7 @@ extern int inferior_has_vforked (ptid_t pid, ptid_t *child_pid);
 
 extern int inferior_has_execd (ptid_t pid, char **execd_pathname);
 
-extern int inferior_has_syscalled (ptid_t pid, char **syscall_name);
+extern int inferior_has_called_syscall (ptid_t pid, int *syscall_number);
 
 /* From exec.c */
 

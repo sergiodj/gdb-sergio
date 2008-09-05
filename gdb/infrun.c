@@ -83,18 +83,6 @@ static int prepare_to_proceed (int);
 
 void _initialize_infrun (void);
 
-/* This variable will be used to sign wether we
-   are in a 'catch syscall' command.
-   Nonzero if we are, zero otherwise. */
-
-int catching_syscalls = 0;
-
-static int
-catch_syscall_enabled ()
-{
-  return catching_syscalls != 0;
-}
-
 /* When set, stop the 'step' command if we enter a function which has
    no line number information.  The normal behavior is that we step
    over such function.  */
@@ -337,7 +325,7 @@ static struct
   }
   fork_event;
   char *execd_pathname;
-  char *syscall_name;
+  int syscall_number;
 }
 pending_follow;
 
@@ -2106,16 +2094,13 @@ handle_inferior_event (struct execution_control_state *ecs)
     case TARGET_WAITKIND_SYSCALL_ENTRY:
       if (debug_infrun)
         fprintf_unfiltered (gdb_stdlog, "infrun: TARGET_WAITKIND_SYSCALL_ENTRY\n");
-      if (catch_syscall_enabled ())
+      if (catch_syscall_enabled () != 0)
         {
           stop_signal = TARGET_SIGNAL_TRAP;
           pending_follow.kind = ecs->ws.kind;
 
-          /* XXX: TEMPORARY */
-          pending_follow.syscall_name = NULL;
-
-/*          pending_follow.fork_event.parent_pid = ecs->ptid;
-          pending_follow.fork_event.child_pid = ecs->ws.value.related_pid; */
+          pending_follow.syscall_number = 
+            gdbarch_get_syscall_number (current_gdbarch, ecs->ptid);
 
           if (!ptid_equal (ecs->ptid, inferior_ptid))
             {
@@ -4591,7 +4576,7 @@ inferior_has_execd (ptid_t pid, char **execd_pathname)
 }
 
 int
-inferior_has_syscalled (ptid_t pid, char **syscall_name)
+inferior_has_called_syscall (ptid_t pid, int *syscall_number)
 {
   struct target_waitstatus last;
   ptid_t last_ptid;
@@ -4605,7 +4590,7 @@ inferior_has_syscalled (ptid_t pid, char **syscall_name)
   if (!ptid_equal (last_ptid, pid))
     return 0;
 
-  *syscall_name = xstrdup (last.value.syscall_name);
+  *syscall_number = last.value.syscall_number;
   return 1;
 }
 

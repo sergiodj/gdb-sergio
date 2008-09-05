@@ -813,8 +813,32 @@ typedef void (gdbarch_record_special_symbol_ftype) (struct gdbarch *gdbarch, str
 extern void gdbarch_record_special_symbol (struct gdbarch *gdbarch, struct objfile *objfile, asymbol *sym);
 extern void set_gdbarch_record_special_symbol (struct gdbarch *gdbarch, gdbarch_record_special_symbol_ftype *record_special_symbol);
 
-extern struct gdbarch_tdep *gdbarch_tdep (struct gdbarch *gdbarch);
+/* Get architecture-specific system calls information from registers. */
 
+extern int gdbarch_get_syscall_number_p (struct gdbarch *gdbarch);
+
+typedef LONGEST (gdbarch_get_syscall_number_ftype) (ptid_t ptid);
+extern LONGEST gdbarch_get_syscall_number (struct gdbarch *gdbarch, ptid_t ptid);
+extern void set_gdbarch_get_syscall_number (struct gdbarch *gdbarch, gdbarch_get_syscall_number_ftype *get_syscall_number);
+
+/* Translate a syscall number to its corresponding name. */
+
+extern int gdbarch_syscall_name_from_number_p (struct gdbarch *gdbarch);
+
+typedef const char * (gdbarch_syscall_name_from_number_ftype) (int syscall_number);
+extern const char *gdbarch_syscall_name_from_number (struct gdbarch *gdbarch, int syscall_number);
+extern void set_gdbarch_syscall_name_from_number (struct gdbarch *gdbarch, gdbarch_syscall_name_from_number_ftype *syscall_name_from_number);
+
+/* Translate a syscall name to its corresponding number. */
+
+extern int gdbarch_syscall_number_from_name_p (struct gdbarch *gdbarch);
+
+typedef int (gdbarch_syscall_number_from_name_ftype) (const char *syscall_name);
+extern int gdbarch_syscall_number_from_name (struct gdbarch *gdbarch, const char *syscall_name);
+extern void set_gdbarch_syscall_number_from_name (struct gdbarch *gdbarch, gdbarch_syscall_number_from_name_ftype *syscall_number_from_name);
+
+
+extern struct gdbarch_tdep *gdbarch_tdep (struct gdbarch *gdbarch);
 
 /* Mechanism for co-ordinating the selection of a specific
    architecture.

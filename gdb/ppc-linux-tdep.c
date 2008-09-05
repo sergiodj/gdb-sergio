@@ -45,6 +45,142 @@
 #include "features/rs6000/powerpc-altivec64l.c"
 #include "features/rs6000/powerpc-e500l.c"
 
+/* Total number of syscalls */
+#define N_SYSCALLS 301
+
+/* Syscalls names for PPC 32-bit */
+static const char *syscalls_names[] = {
+    "restart_syscall", "exit", "fork", "read",
+    "write", "open", "close", "waitpid", "creat",
+    "link", "unlink", "execve", "chdir", "time",
+    "mknod", "chmod", "lchown", "break", "oldstat",
+    "lseek", "getpid", "mount", "umount", "setuid",
+    "getuid", "stime", "ptrace", "alarm", "oldfstat",
+    "pause", "utime", "stty", "gtty", "access", "nice",
+    "ftime", "sync", "kill", "rename", "mkdir", "rmdir",
+    "dup", "pipe", "times", "prof", "brk", "setgid",
+    "getgid", "signal", "geteuid", "getegid", "acct",
+    "umount2", "lock", "ioctl", "fcntl", "mpx", "setpgid",
+    "ulimit", "oldolduname", "umask", "chroot", "ustat",
+    "dup2", "getppid", "getpgrp", "setsid", "sigaction",
+    "sgetmask", "ssetmask", "setreuid", "setregid",
+    "sigsuspend", "sigpending", "sethostname", "setrlimit",
+    "getrlimit", "getrusage", "gettimeofday", "settimeofday",
+    "getgroups", "setgroups", "select", "symlink", "oldlstat",
+    "readlink",  "uselib", "swapon", "reboot", "readdir",
+    "mmap", "munmap", "truncate", "ftruncate", "fchmod",
+    "fchown", "getpriority", "setpriority", "profil",
+    "statfs", "fstatfs", "ioperm", "socketcall", "syslog",
+    "setitimer", "getitimer", "stat", "lstat", "fstat",
+    "olduname", "iopl", "vhangup", "idle", "vm86", "wait4",
+    "swapoff", "sysinfo", "ipc", "fsync", "sigreturn",
+    "clone", "setdomainname", "uname", "modify_ldt",
+    "adjtimex", "mprotect", "sigprocmask", "create_module",
+    "init_module", "delete_module", "get_kernel_syms",
+    "quotactl", "getpgid", "fchdir", "bdflush", "sysfs",
+    "personality", "afs_syscall", "setfsuid", "setfsgid",
+    "_llseek", "getdents", "_newselect", "flock", "msync",
+    "readv", "writev", "getsid", "fdatasync", "_sysctl",
+    "mlock", "munlock", "mlockall", "munlockall",
+    "sched_setparam", "sched_getparam", "sched_setscheduler",
+    "sched_getscheduler", "sched_yield", 
+    "sched_get_priority_max", "sched_get_priority_min",
+    "sched_rr_get_interval", "nanosleep", "mremap",
+    "setresuid", "getresuid", "query_module", "poll",
+    "nfsservctl", "setresgid", "getresgid", "prctl",
+    "rt_sigreturn", "rt_sigaction", "rt_sigprocmask",
+    "rt_sigpending", "rt_sigtimedwait", "rt_sigqueueinfo",
+    "rt_sigsuspend", "pread64", "pwrite64", "chown",
+    "getcwd", "capget", "capset", "sigaltstack", "sendfile",
+    "getpmsg", "putpmsg", "vfork", "ugetrlimit", "readahead",
+    "mmap2", "truncate64", "ftruncate64", "stat64", "lstat64",
+    "fstat64", "pciconfig_read", "pciconfig_write",
+    "pciconfig_iobase", "multiplexer", "getdents64",
+    "pivot_root", "fcntl64", "madvise", "mincore", "gettid",
+    "tkill", "setxattr", "lsetxattr", "fsetxattr", 
+    "getxattr", "lgetxattr", "fgetxattr", "listxattr",
+    "llistxattr", "flistxattr", "removexattr", "lremovexattr",
+    "fremovexattr", "futex", "sched_setaffinity",
+    "sched_getaffinity", "", "tuxcall", "sendfile64",
+    "io_setup", "io_destroy", "io_getevents", "io_submit",
+    "io_cancel", "set_tid_address", "fadvise64", "exit_group",
+    "lookup_dcookie", "epoll_create", "epoll_ctl",
+    "epoll_wait", "remap_file_pages", "timer_create",
+    "timer_settime", "timer_gettime", "timer_getoverrun",
+    "timer_delete", "clock_settime", "clock_gettime",
+    "clock_getres", "clock_nanosleep", "swapcontext",
+    "tgkill", "utimes", "statfs64", "fstatfs64", "fadvise64_64",
+    "rtas", "sys_debug_setcontext", "", "", "mbind",
+    "get_mempolicy", "set_mempolicy", "mq_open", "mq_unlink",
+    "mq_timedsend", "mq_timedreceive", "mq_notify",
+    "mq_getsetattr", "kexec_load", "add_key", "request_key",
+    "keyctl", "waitid", "ioprio_set", "ioprio_get",
+    "inotify_init", "inotify_add_watch", "inotify_rm_watch",
+    "spu_run", "spu_create", "pselect6", "ppoll", "unshare",
+    "", "", "", "openat", "mkdirat", "mknodat", "fchownat",
+    "futimesat", "fstatat64", "unlinkat", "renameat",
+    "linkat", "symlinkat", "readlinkat", "fchmodat",
+    "faccessat", "", ""
+};
+
+/* Syscalls names for PPC 64-bit */
+static const char *syscalls_names64[] = {
+    "restart_syscall", "exit", "fork", "read", "write", "open",
+    "close", "waitpid", "creat", "link", "unlink", "execve",
+    "chdir", "time", "mknod", "chmod", "lchown", "break", "oldstat",
+    "lseek", "getpid", "mount", "umount", "setuid", "getuid", "stime",
+    "ptrace", "alarm", "oldfstat", "pause", "utime", "stty", "gtty",
+    "access", "nice", "ftime", "sync", "kill", "rename", "mkdir",
+    "rmdir", "dup", "pipe", "times", "prof", "brk", "setgid",
+    "getgid", "signal", "geteuid", "getegid", "acct", "umount2",
+    "lock", "ioctl", "fcntl", "mpx", "setpgid", "ulimit",
+    "oldolduname", "umask", "chroot", "ustat", "dup2", "getppid",
+    "getpgrp", "setsid", "sigaction", "sgetmask", "ssetmask",
+    "setreuid", "setregid", "sigsuspend", "sigpending", "sethostname",
+    "setrlimit", "getrlimit", "getrusage", "gettimeofday", "settimeofday",
+    "getgroups", "setgroups", "select", "symlink", "oldlstat",
+    "readlink", "uselib", "swapon", "reboot", "readdir", "mmap",
+    "munmap", "truncate", "ftruncate", "fchmod", "fchown", "getpriority",
+    "setpriority", "profil", "statfs", "fstatfs", "ioperm", "socketcall",
+    "syslog", "setitimer", "getitimer", "stat", "lstat", "fstat",
+    "olduname", "iopl", "vhangup", "idle", "vm86", "wait4", "swapoff",
+    "sysinfo", "ipc", "fsync", "sigreturn", "clone", "setdomainname",
+    "uname", "modify_ldt", "adjtimex", "mprotect", "sigprocmask",
+    "create_module", "init_module", "delete_module", "get_kernel_syms",
+    "quotactl", "getpgid", "fchdir", "bdflush", "sysfs", "personality",
+    "afs_syscall", "setfsuid", "setfsgid", "_llseek", "getdents",
+    "_newselect", "flock", "msync", "readv", "writev", "getsid",
+    "fdatasync", "_sysctl", "mlock", "munlock", "mlockall",
+    "munlockall", "sched_setparam", "sched_getparam", "sched_setscheduler",
+    "sched_getscheduler", "sched_yield", "sched_get_priority_max",
+    "sched_get_priority_min", "sched_rr_get_interval", "nanosleep",
+    "mremap", "setresuid", "getresuid", "query_module", "poll",
+    "nfsservctl", "setresgid", "getresgid", "prctl", "rt_sigreturn",
+    "rt_sigaction", "rt_sigprocmask", "rt_sigpending", "rt_sigtimedwait",
+    "rt_sigqueueinfo", "rt_sigsuspend", "pread64", "pwrite64", "chown",
+    "getcwd", "capget", "capset", "sigaltstack", "sendfile", "getpmsg",
+    "putpmsg", "vfork", "ugetrlimit", "readahead", "", "", "", "", "", "",
+    "pciconfig_read", "pciconfig_write", "pciconfig_iobase", "multiplexer",
+    "getdents64", "pivot_root", "", "madvise", "mincore", "gettid", "tkill",
+    "setxattr", "lsetxattr", "fsetxattr", "getxattr", "lgetxattr", "fgetxattr",
+    "listxattr", "llistxattr", "flistxattr", "removexattr", "lremovexattr",
+    "fremovexattr", "futex", "sched_setaffinity", "sched_getaffinity",
+    "", "tuxcall", "", "io_setup", "io_destroy", "io_getevents", "io_submit",
+    "io_cancel", "set_tid_address", "fadvise64", "exit_group", "lookup_dcookie",
+    "epoll_create", "epoll_ctl", "epoll_wait", "remap_file_pages",
+    "timer_create", "timer_settime", "timer_gettime", "timer_getoverrun",
+    "timer_delete", "clock_settime", "clock_gettime", "clock_getres",
+    "clock_nanosleep", "swapcontext", "tgkill", "utimes", "statfs64",
+    "fstatfs64", "", "rtas", "sys_debug_setcontext", "", "", "mbind",
+    "get_mempolicy", "set_mempolicy", "mq_open", "mq_unlink", "mq_timedsend",
+    "mq_timedreceive", "mq_notify", "mq_getsetattr", "kexec_load", "add_key",
+    "request_key", "keyctl", "waitid", "ioprio_set", "ioprio_get",
+    "inotify_init", "inotify_add_watch", "inotify_rm_watch", "spu_run",
+    "spu_create", "pselect6", "ppoll", "unshare", "", "", "",
+    "openat", "mkdirat", "mknodat", "fchownat", "futimesat", "newfstatat",
+    "unlinkat", "renameat", "linkat", "symlinkat", "readlinkat",
+    "fchmodat", "faccessat", "", ""
+};
 
 /* ppc_linux_memory_remove_breakpoints attempts to remove a breakpoint
    in much the same fashion as memory_remove_breakpoint in mem-break.c,
@@ -947,6 +1083,106 @@ ppc_linux_trap_reg_p (struct gdbarch *gdbarch)
          && register_size (gdbarch, PPC_TRAP_REGNUM) > 0;
 }
 
+/* Return the current system call's number present in the
+   r0 register. When the function fails, it returns -1. */
+LONGEST
+ppc_linux_get_syscall_number (ptid_t ptid)
+{
+  struct regcache *regcache;
+  struct gdbarch *gdbarch;
+  struct gdbarch_tdep *tdep;
+  /* The content of a register */
+  gdb_byte buf[4];
+
+  regcache = get_thread_regcache (ptid);
+  gdbarch = get_regcache_arch (regcache);
+  tdep = gdbarch_tdep (gdbarch);
+
+  /* Make sure we're in a 32-bit machine */
+  gdb_assert (tdep->wordsize == 4);
+
+  /* Getting the system call number from the register.
+     When dealing with PowerPC architecture, this information
+     is stored at 0th register. */
+  regcache_cooked_read (regcache, tdep->ppc_gp0_regnum, buf);
+
+  return extract_signed_integer (buf, 4);
+}
+
+/* Return the current system call's number present in the
+   r0 register. When the function fails, it returns -1. */
+LONGEST
+ppc64_linux_get_syscall_number (ptid_t ptid)
+{
+  struct regcache *regcache;
+  struct gdbarch *gdbarch;
+  struct gdbarch_tdep *tdep;
+  /* The content of a register */
+  gdb_byte buf[8];
+
+  regcache = get_thread_regcache (ptid);
+  gdbarch = get_regcache_arch (regcache);
+  tdep = gdbarch_tdep (gdbarch);
+
+  /* Make sure we're in a 64-bit machine */
+  gdb_assert (tdep->wordsize == 8);
+
+  /* Getting the system call number from the register.
+     When dealing with PowerPC architecture, this information
+     is stored at 0th register. */
+  regcache_cooked_read (regcache, tdep->ppc_gp0_regnum, buf);
+
+  return extract_signed_integer (buf, 8);
+}
+
+const char *
+ppc_linux_syscall_name_from_number (int syscall_number)
+{
+  return syscalls_names[syscall_number];
+}
+
+const char *
+ppc64_linux_syscall_name_from_number (int syscall_number)
+{
+  return syscalls_names64[syscall_number];
+}
+
+int
+ppc_linux_syscall_number_from_name (const char *syscall_name)
+{
+  int ret = -1;
+  int i;
+
+  for (i = 0; i < N_SYSCALLS; i++)
+    {
+      if (strcmp (syscall_name, syscalls_names[i]) == 0)
+        {
+          ret = i;
+          break;
+        }
+    }
+
+  return ret;
+}
+
+int
+ppc64_linux_syscall_number_from_name (const char *syscall_name)
+{
+  int ret = -1;
+  int i;
+
+  for (i = 0; i < N_SYSCALLS; i++)
+    {
+      if (strcmp (syscall_name, syscalls_names64[i]) == 0)
+        {
+          ret = i;
+          break;
+        }
+    }
+
+  return ret;
+}
+
 static void
 ppc_linux_write_pc (struct regcache *regcache, CORE_ADDR pc)
 {
@@ -1009,6 +1245,10 @@ ppc_linux_init_abi (struct gdbarch_info info,
 
   if (tdep->wordsize == 4)
     {
+      set_gdbarch_get_syscall_number (gdbarch, ppc_linux_get_syscall_number);
+      set_gdbarch_syscall_name_from_number (gdbarch, ppc_linux_syscall_name_from_number);
+      set_gdbarch_syscall_number_from_name (gdbarch, ppc_linux_syscall_number_from_name);
+
       /* Until November 2001, gcc did not comply with the 32 bit SysV
 	 R4 ABI requirement that structures less than or equal to 8
 	 bytes should be returned in registers.  Instead GCC was using
@@ -1033,6 +1273,10 @@ ppc_linux_init_abi (struct gdbarch_info info,
   
   if (tdep->wordsize == 8)
     {
+      set_gdbarch_get_syscall_number (gdbarch, ppc64_linux_get_syscall_number);
+      set_gdbarch_syscall_name_from_number (gdbarch, ppc64_linux_syscall_name_from_number);
+      set_gdbarch_syscall_number_from_name (gdbarch, ppc64_linux_syscall_number_from_name);
+
       /* Handle PPC GNU/Linux 64-bit function pointers (which are really
 	 function descriptors).  */
       set_gdbarch_convert_from_func_ptr_addr
@@ -1056,6 +1300,7 @@ ppc_linux_init_abi (struct gdbarch_info info,
   /* Enable TLS support.  */
   set_gdbarch_fetch_tls_load_module_address (gdbarch,
                                              svr4_fetch_objfile_link_map);
+
 
   if (tdesc_data)
     {

@@ -240,6 +240,9 @@ struct gdbarch
   gdbarch_target_signal_from_host_ftype *target_signal_from_host;
   gdbarch_target_signal_to_host_ftype *target_signal_to_host;
   gdbarch_record_special_symbol_ftype *record_special_symbol;
+  gdbarch_get_syscall_number_ftype *get_syscall_number;
+  gdbarch_syscall_name_from_number_ftype *syscall_name_from_number;
+  gdbarch_syscall_number_from_name_ftype *syscall_number_from_name;
 };
 
 
@@ -959,6 +962,15 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
   fprintf_unfiltered (file,
                       "gdbarch_dump: gdbarch_record_special_symbol_p() = %d\n",
                       gdbarch_record_special_symbol_p (gdbarch));
+  fprintf_unfiltered (file,
+                      "gdbarch_dump: gdbarch_get_syscall_number_p() = %d\n",
+                      gdbarch_get_syscall_number_p (gdbarch));
+  fprintf_unfiltered (file,
+                      "gdbarch_dump: gdbarch_syscall_name_from_number_p() = %d\n",
+                      gdbarch_syscall_name_from_number_p (gdbarch));
+  fprintf_unfiltered (file,
+                      "gdbarch_dump: gdbarch_syscall_number_from_name_p() = %d\n",
+                      gdbarch_syscall_number_from_name_p (gdbarch));
   fprintf_unfiltered (file,
                       "gdbarch_dump: record_special_symbol = <0x%lx>\n",
                       (long) gdbarch->record_special_symbol);
@@ -3240,6 +3252,75 @@ gdbarch_record_special_symbol_p (struct gdbarch *gdbarch)
 {
   gdb_assert (gdbarch != NULL);
   return gdbarch->record_special_symbol != NULL;
+}
+
+int
+gdbarch_get_syscall_number_p (struct gdbarch *gdbarch)
+{
+  gdb_assert (gdbarch != NULL);
+  return gdbarch->get_syscall_number != NULL;
+}
+
+void
+set_gdbarch_get_syscall_number (struct gdbarch *gdbarch,
+                                gdbarch_get_syscall_number_ftype *get_syscall_number)
+{
+  gdbarch->get_syscall_number = get_syscall_number;
+}
+
+LONGEST
+gdbarch_get_syscall_number (struct gdbarch *gdbarch, ptid_t ptid)
+{
+  gdb_assert (gdbarch != NULL);
+  if (gdbarch_debug >= 2)
+    fprintf_unfiltered (gdb_stdlog, "gdbarch_get_syscall_number called\n");
+  return gdbarch->get_syscall_number (ptid);
+}
+
+int
+gdbarch_syscall_name_from_number_p (struct gdbarch *gdbarch)
+{
+  gdb_assert (gdbarch != NULL);
+  return gdbarch->syscall_name_from_number != NULL;
+}
+
+void
+set_gdbarch_syscall_name_from_number (struct gdbarch *gdbarch,
+                                      gdbarch_syscall_name_from_number_ftype *syscall_name_from_number)
+{
+  gdbarch->syscall_name_from_number = syscall_name_from_number;
+}
+
+const char *
+gdbarch_syscall_name_from_number (struct gdbarch *gdbarch, int syscall_number)
+{
+  gdb_assert (gdbarch != NULL);
+  if (gdbarch_debug >= 2)
+    fprintf_unfiltered (gdb_stdlog, "gdbarch_syscall_name_from_number called\n");
+  return gdbarch->syscall_name_from_number (syscall_number);
+}
+
+int
+gdbarch_syscall_number_from_name_p (struct gdbarch *gdbarch)
+{
+  gdb_assert (gdbarch != NULL);
+  return gdbarch->syscall_number_from_name != NULL;
+}
+
+void
+set_gdbarch_syscall_number_from_name (struct gdbarch *gdbarch,
+                                      gdbarch_syscall_number_from_name_ftype *syscall_number_from_name)
+{
+  gdbarch->syscall_number_from_name = syscall_number_from_name;
+}
+
+int
+gdbarch_syscall_number_from_name (struct gdbarch *gdbarch, const char *syscall_name)
+{
+  gdb_assert (gdbarch != NULL);
+  if (gdbarch_debug >= 2)
+    fprintf_unfiltered (gdb_stdlog, "gdbarch_syscall_number_from_name called\n");
+  return gdbarch->syscall_number_from_name (syscall_name);
 }
 
 void
