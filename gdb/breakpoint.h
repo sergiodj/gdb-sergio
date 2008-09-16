@@ -131,6 +131,10 @@ enum bptype
     /* This is not really a breakpoint, but the catchpoint which implements
        the "catch syscall" functionality. */
     bp_catch_syscall,
+
+    /* This type is used to signal an internal breakpoint located at
+       the AT_ENTRY address. */
+    bp_entry_breakpoint,
   };
 
 /* States of enablement of breakpoint. */
@@ -472,7 +476,7 @@ struct breakpoint
 
        It stores the syscall number in case we are in the "filter mode",
        or -1 otherwise. */
-    int syscall_to_be_catched;
+    int syscall_to_be_caught;
 
     /* Methods associated with this breakpoint.  */
     struct breakpoint_ops *ops;
@@ -554,6 +558,12 @@ enum bpstat_what_main_action
     /* Check the dynamic linker's data structures for new libraries, then
        resume out of the dynamic linker's callback, stop and print.  */
     BPSTAT_WHAT_CHECK_SHLIBS_RESUME_FROM_HOOK,
+
+    /* Enable the PTRACE_O_TRACESYSGOOD options for the inferior if the
+       user wants to (i.e., if the user enabled the "catch syscall").
+       The flag can be enabled now because we are sure that we are outside
+       the ld.so. */
+    BPSTAT_WHAT_ENTRY_BREAKPOINT,
 
     /* This is just used to keep track of how many enums there are.  */
     BPSTAT_WHAT_LAST
@@ -904,5 +914,18 @@ extern void breakpoint_retire_moribund (void);
 /* Check if we are catching syscalls or not.
    Returns 0 if not, greater than 0 if we are. */
 extern int catch_syscall_enabled (void);
+
+/* Function used to set an internal breakpoint at the AT_ENTRY
+   (a.k.a. the entry point of the inferior).
+
+   This is currently needed for us to know when to start setting
+   up catchpoints for syscalls in the inferior. If we don't do that,
+   then we would set a "catch syscall" too early, which would
+   catch syscalls from ld.so and/or libc (and we don't want that).
+
+   Returns zero if there was an error setting this breakpoint,
+   or 1 if everything went OK. */
+extern int create_entry_breakpoint (void);
+
 
 #endif /* !defined (BREAKPOINT_H) */

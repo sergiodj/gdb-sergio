@@ -322,7 +322,11 @@ inf_ptrace_resume (ptid_t ptid, int step, enum target_signal signal)
        single-threaded processes, so simply resume the inferior.  */
     pid = ptid_get_pid (inferior_ptid);
 
-  request = (catch_syscall_enabled () != 0) ? PT_SYSCALL : PT_CONTINUE;
+  if (target_passed_by_entrypoint () > 0
+      && catch_syscall_enabled () > 0)
+    request = PT_SYSCALL;
+  else
+    request = PT_CONTINUE;
 
   if (step)
     {

@@ -448,8 +448,10 @@ update_current_target (void)
       /* Do not inherit to_follow_fork.  */
       INHERIT (to_insert_exec_catchpoint, t);
       INHERIT (to_remove_exec_catchpoint, t);
+      INHERIT (to_passed_by_entrypoint, t);
       INHERIT (to_insert_syscall_catchpoint, t);
       INHERIT (to_remove_syscall_catchpoint, t);
+      INHERIT (to_enable_tracesysgood, t);
       INHERIT (to_has_exited, t);
       INHERIT (to_mourn_inferior, t);
       INHERIT (to_can_run, t);
@@ -609,6 +611,9 @@ update_current_target (void)
   de_fault (to_insert_exec_catchpoint,
 	    (void (*) (int))
 	    tcomplain);
+  de_fault (to_passed_by_entrypoint,
+            (int (*) (void))
+            tcomplain);
   de_fault (to_remove_exec_catchpoint,
 	    (int (*) (int))
 	    tcomplain);
@@ -618,6 +623,9 @@ update_current_target (void)
   de_fault (to_remove_syscall_catchpoint,
 	    (int (*) (int))
 	    tcomplain);
+  de_fault (to_enable_tracesysgood,
+            (void (*) (ptid_t))
+            tcomplain);
   de_fault (to_has_exited,
 	    (int (*) (int, int, int *))
 	    return_zero);

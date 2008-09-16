@@ -2965,6 +2965,16 @@ infrun: BPSTAT_WHAT_SET_LONGJMP_RESUME (!gdbarch_get_longjmp_target)\n");
 	}
 	break;
 
+      case BPSTAT_WHAT_ENTRY_BREAKPOINT:
+        /* We hit the AT_ENTRY breakpoint, and now we have to enable
+           the PTRACE_O_TRACESYSGOOD option in the inferior *if* we
+           are catching syscalls. */
+        if (debug_infrun)
+          fprintf_unfiltered (gdb_stdlog, "infrun: BPSTAT_WHAT_ENTRY_BREAKPOINT\n");
+        target_enable_tracesysgood (ecs->ptid);
+        tss->stepping_over_breakpoint = 1;
+        break;
+
       case BPSTAT_WHAT_LAST:
 	/* Not a real code, but listed here to shut up gcc -Wall.  */
 

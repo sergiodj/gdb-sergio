@@ -283,6 +283,10 @@ static int linux_supports_tracesysgood_flag = -1;
 
 static int linux_supports_tracevforkdone_flag = -1;
 
+/* If the inferior have passed through its entrypoint (AT_ENTRY),
+   then this flag is set to 1. Otherwise, its value is 0. */
+static int linux_passed_by_entrypoint_flag = 0;
+
 /* Async mode support */
 
 /* True if async mode is currently on.  */
@@ -291,6 +295,9 @@ static int linux_nat_async_enabled;
 /* Zero if the async mode, although enabled, is masked, which means
    linux_nat_wait should behave as if async mode was off.  */
 static int linux_nat_async_mask_value = 1;
+
+/* Stores the current used ptrace() options. */
+static int current_ptrace_options = 0;
 
 /* The read/write ends of the pipe registered as waitable file in the
    event loop.  */
@@ -675,12 +682,34 @@ linux_supports_tracevforkdone (int pid)
   return linux_supports_tracevforkdone_flag;
 }
 
+static void
+linux_enable_tracesysgood (ptid_t ptid)
+{
+  int pid = ptid_get_lwp (ptid);
+
+  if (pid == 0)
+    pid = ptid_get_pid (ptid);
+
+  if (linux_supports_tracesysgood (pid) == 0)
+    return;
+
+  current_ptrace_options |= PTRACE_O_TRACESYSGOOD;
+  linux_passed_by_entrypoint_flag = 1;
+
+  ptrace (PTRACE_SETOPTIONS, pid, 0, current_ptrace_options);
+}
+
+static int
+linux_passed_by_entrypoint (void)
+{
+  return linux_passed_by_entrypoint_flag;
+}
+
 
 void
 linux_enable_event_reporting (ptid_t ptid)
 {
   int pid = ptid_get_lwp (ptid);
-  int options;
 
   if (pid == 0)
     pid = ptid_get_pid (ptid);
@@ -688,19 +717,16 @@ linux_enable_event_reporting (ptid_t ptid)
   if (! linux_supports_tracefork (pid))
     return;
 
-  options = PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK | PTRACE_O_TRACEEXEC
-    | PTRACE_O_TRACECLONE;
+  current_ptrace_options |= PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK
+    | PTRACE_O_TRACEEXEC | PTRACE_O_TRACECLONE;
 
-  if (linux_supports_tracesysgood (pid))
-      if (catch_syscall_enabled () != 0)
-        options |= PTRACE_O_TRACESYSGOOD;
   if (linux_supports_tracevforkdone (pid))
-    options |= PTRACE_O_TRACEVFORKDONE;
+    current_ptrace_options |= PTRACE_O_TRACEVFORKDONE;
 
   /* Do not enable PTRACE_O_TRACEEXIT until GDB is more prepared to support
      read-only process state.  */
 
-  ptrace (PTRACE_SETOPTIONS, pid, 0, options);
+  ptrace (PTRACE_SETOPTIONS, pid, 0, current_ptrace_options);
 }
 
 static void
@@ -715,6 +741,7 @@ linux_child_post_startup_inferior (ptid_t ptid)
 {
   linux_enable_event_reporting (ptid);
   check_for_thread_db ();
+  create_entry_breakpoint ();
 }
 
 static int
@@ -920,13 +947,13 @@ linux_child_insert_syscall_catchpoint (int pid)
 {
   if (! linux_supports_tracesysgood (pid))
     error (_("Your system does not support syscall catchpoints."));
-  linux_enable_event_reporting (pid_to_ptid (pid));
+//  linux_enable_event_reporting (pid_to_ptid (pid));
 }
 
 static int
 linux_child_remove_syscall_catchpoint (int pid)
 {
-  linux_enable_event_reporting (pid_to_ptid (pid));
+//  linux_enable_event_reporting (pid_to_ptid (pid));
   return 0;
 }
 
@@ -1349,6 +1376,9 @@ linux_nat_create_inferior (char *exec_file, char *allargs, char **env,
 #ifdef HAVE_PERSONALITY
   int personality_orig = 0, personality_set = 0;
 #endif /* HAVE_PERSONALITY */
+
+  /* We are sarting, so we still have not passed through our entrypoint. */
+  linux_passed_by_entrypoint_flag = 0;
 
   /* The fork_child mechanism is synchronous and calls target_wait, so
      we have to mask the async mode.  */
@@ -1849,6 +1879,7 @@ linux_handle_extended_wait (struct lwp_info *lp, int status,
   struct lwp_info *new_lp = NULL;
   int event = status >> 16;
 
+  /* Used for 'catch syscall' feature. */
   if (WSTOPSIG (status) == TRAP_IS_SYSCALL)
     {
       struct regcache *regcache = get_thread_regcache (lp->ptid);
@@ -4050,6 +4081,9 @@ linux_target_install_ops (struct target_ops *t)
   t->to_follow_fork = linux_child_follow_fork;
   t->to_find_memory_regions = linux_nat_find_memory_regions;
   t->to_make_corefile_notes = linux_nat_make_corefile_notes;
+
+  t->to_enable_tracesysgood = linux_enable_tracesysgood;
+  t->to_passed_by_entrypoint = linux_passed_by_entrypoint;
 
   super_xfer_partial = t->to_xfer_partial;
   t->to_xfer_partial = linux_xfer_partial;

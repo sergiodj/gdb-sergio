@@ -394,8 +394,10 @@ struct target_ops
     int (*to_follow_fork) (struct target_ops *, int);
     void (*to_insert_exec_catchpoint) (int);
     int (*to_remove_exec_catchpoint) (int);
+    int (*to_passed_by_entrypoint) (void);
     void (*to_insert_syscall_catchpoint) (int);
     int (*to_remove_syscall_catchpoint) (int);
+    void (*to_enable_tracesysgood) (ptid_t);
     int (*to_has_exited) (int, int, int *);
     void (*to_mourn_inferior) (void);
     int (*to_can_run) (void);
@@ -871,13 +873,23 @@ int target_follow_fork (int follow_child);
 #define target_remove_exec_catchpoint(pid) \
      (*current_target.to_remove_exec_catchpoint) (pid)
 
+/* Has the inferior already passed through its entrypoint? */
+#define target_passed_by_entrypoint() \
+     (*current_target.to_passed_by_entrypoint) ()
+
 /* Syscall catch functions */
 
 #define target_insert_syscall_catchpoint(pid) \
-	(*current_target.to_insert_syscall_catchpoint) (pid)
+     (*current_target.to_insert_syscall_catchpoint) (pid)
 
 #define target_remove_syscall_catchpoint(pid) \
-	(*current_target.to_remove_syscall_catchpoint) (pid)
+     (*current_target.to_remove_syscall_catchpoint) (pid)
+
+/* Enable PTRACE_O_TRACESYSGOOD in the inferior.
+   This is mainly used for the "catch syscall" feature. */
+
+#define target_enable_tracesysgood(ptid) \
+     (*current_target.to_enable_tracesysgood) (ptid)
 
 
 /* Returns TRUE if PID has exited.  And, also sets EXIT_STATUS to the

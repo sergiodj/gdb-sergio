@@ -2294,6 +2294,13 @@ print_it_typical (bpstat bs)
       return PRINT_NOTHING;
       break;
 
+    case bp_entry_breakpoint:
+       /* Not sure how we will get here. 
+	 GDB should not stop for these breakpoints.  */
+      printf_filtered (_("Entry Breakpoint: gdb should not stop!\n"));
+      return PRINT_NOTHING;
+      break;    
+
     case bp_overlay_event:
       /* By analogy with the thread event, GDB should not stop for these. */
       printf_filtered (_("Overlay Event Breakpoint: gdb should not stop!\n"));
@@ -3184,6 +3191,9 @@ bpstat_what (bpstat bs)
       /* We caught a shared library event.  */
       catch_shlib_event,
 
+      /* We are in a entry breakpoint. */
+      entry_breakpoint,
+
       /* This is just used to count how many enums there are.  */
       class_last
     };
@@ -3200,6 +3210,7 @@ bpstat_what (bpstat bs)
 #define sr BPSTAT_WHAT_STEP_RESUME
 #define shl BPSTAT_WHAT_CHECK_SHLIBS
 #define shlr BPSTAT_WHAT_CHECK_SHLIBS_RESUME_FROM_HOOK
+#define entrybp BPSTAT_WHAT_ENTRY_BREAKPOINT
 
 /* "Can't happen."  Might want to print an error message.
    abort() is not out of the question, but chances are GDB is just
@@ -3244,30 +3255,33 @@ bpstat_what (bpstat bs)
     table[(int) class_last][(int) BPSTAT_WHAT_LAST] =
   {
   /*                              old action */
-  /*       kc    ss    sn    sgl    slr   clr   sr   shl   shlr
+  /*       kc    ss    sn    sgl    slr   clr   sr   shl   shlr   entrybp
    */
 /*no_effect */
-    {kc, ss, sn, sgl, slr, clr, sr, shl, shlr},
+    {kc, ss, sn, sgl, slr, clr, sr, shl, shlr, shlr},
 /*wp_silent */
-    {ss, ss, sn, ss, ss, ss, sr, shl, shlr},
+    {ss, ss, sn, ss, ss, ss, sr, shl, shlr, shlr},
 /*wp_noisy */
-    {sn, sn, sn, sn, sn, sn, sr, shl, shlr},
+    {sn, sn, sn, sn, sn, sn, sr, shl, shlr, shlr},
 /*bp_nostop */
-    {sgl, ss, sn, sgl, slr, slr, sr, shl, shlr},
+    {sgl, ss, sn, sgl, slr, slr, sr, shl, shlr, shlr},
 /*bp_silent */
-    {ss, ss, sn, ss, ss, ss, sr, shl, shlr},
+    {ss, ss, sn, ss, ss, ss, sr, shl, shlr, shlr},
 /*bp_noisy */
-    {sn, sn, sn, sn, sn, sn, sr, shl, shlr},
+    {sn, sn, sn, sn, sn, sn, sr, shl, shlr, shlr},
 /*long_jump */
-    {slr, ss, sn, slr, slr, err, sr, shl, shlr},
+    {slr, ss, sn, slr, slr, err, sr, shl, shlr, shlr},
 /*long_resume */
-    {clr, ss, sn, err, err, err, sr, shl, shlr},
+    {clr, ss, sn, err, err, err, sr, shl, shlr, shlr},
 /*step_resume */
-    {sr, sr, sr, sr, sr, sr, sr, sr, sr},
+    {sr, sr, sr, sr, sr, sr, sr, sr, sr, sr},
 /*shlib */
-    {shl, shl, shl, shl, shl, shl, sr, shl, shlr},
+    {shl, shl, shl, shl, shl, shl, sr, shl, shlr, shlr},
 /*catch_shlib */
-    {shlr, shlr, shlr, shlr, shlr, shlr, sr, shlr, shlr}
+    {shlr, shlr, shlr, shlr, shlr, shlr, sr, shlr, shlr, shlr},
+/* entry_breakpoint */
+    {entrybp, entrybp, entrybp, entrybp, entrybp, entrybp, sr, entrybp,
+      entrybp, entrybp}
   };
 
 #undef kc
@@ -3281,6 +3295,7 @@ bpstat_what (bpstat bs)
 #undef ts
 #undef shl
 #undef shlr
+#undef entrybp
   enum bpstat_what_main_action current_action = BPSTAT_WHAT_KEEP_CHECKING;
   struct bpstat_what retval;
 
@@ -3387,6 +3402,12 @@ bpstat_what (bpstat bs)
 	  bs_class = bp_silent;
 	  retval.call_dummy = 1;
 	  break;
+        case bp_entry_breakpoint:
+          if (bs->stop)
+            bs_class = entry_breakpoint;
+          else
+            bs_class = no_effect;
+          break;
 	}
       current_action = table[(int) bs_class][(int) current_action];
     }
@@ -3551,7 +3572,8 @@ print_one_breakpoint_location (struct breakpoint *b,
     {bp_catch_fork, "catch fork"},
     {bp_catch_vfork, "catch vfork"},
     {bp_catch_exec, "catch exec"},
-    {bp_catch_syscall, "catch syscall"}
+    {bp_catch_syscall, "catch syscall"},
+    {bp_entry_breakpoint, "entry breakpoint"}
   };
   
   static char bpenables[] = "nynny";
@@ -3750,6 +3772,7 @@ print_one_breakpoint_location (struct breakpoint *b,
       case bp_shlib_event:
       case bp_thread_event:
       case bp_overlay_event:
+      case bp_entry_breakpoint:
 	if (addressprint)
 	  {
 	    annotate_field (4);
@@ -4330,6 +4353,7 @@ allocate_bp_location (struct breakpoint *bpt, enum bptype bp_type)
     case bp_watchpoint_scope:
     case bp_call_dummy:
     case bp_shlib_event:
+    case bp_entry_breakpoint:
     case bp_thread_event:
     case bp_overlay_event:
     case bp_catch_load:
@@ -4608,6 +4632,26 @@ disable_overlay_breakpoints (void)
     }
 }
 
+int
+create_entry_breakpoint ()
+{
+  CORE_ADDR entry_addr;
+  struct breakpoint *b;
+
+  entry_addr = entry_point_address ();
+
+  /* Setting the breakpoint */
+  b = create_internal_breakpoint (entry_addr, bp_entry_breakpoint);
+
+  b->enable_state = bp_enabled;
+  /* addr_string has to be used or breakpoint_re_set will delete me. */
+  b->addr_string = xstrprintf ("AT_ENTRY (0x%s)", paddr (entry_addr));
+
+  update_global_location_list (1);
+
+  return 1;
+}
+
 struct breakpoint *
 create_thread_event_breakpoint (CORE_ADDR address)
 {
@@ -4821,7 +4865,7 @@ create_syscall_event_catchpoint (int tempflag, int syscall_number)
   b->number = breakpoint_count;
   b->cond_string = NULL;
   b->thread = thread;
-  b->syscall_to_be_catched = syscall_number;
+  b->syscall_to_be_caught = syscall_number;
   b->addr_string = NULL;
   b->enable_state = bp_enabled;
   b->disposition = tempflag ? disp_del : disp_donttouch;
@@ -5048,11 +5092,11 @@ mention (struct breakpoint *b)
 			 b->number);
 	break;
       case bp_catch_syscall:
-        if (b->syscall_to_be_catched != -1)
+        if (b->syscall_to_be_caught != -1)
           printf_filtered (_("Catchpoint %d (syscall '%s()')"),
                            b->number,
                            gdbarch_syscall_name_from_number (current_gdbarch,
-                                                             b->syscall_to_be_catched));
+                                                             b->syscall_to_be_caught));
         else
           printf_filtered (_("Catchpoint %d (syscall)"),
                            b->number);
@@ -5068,6 +5112,7 @@ mention (struct breakpoint *b)
       case bp_shlib_event:
       case bp_thread_event:
       case bp_overlay_event:
+      case bp_entry_breakpoint:
 	break;
       }
 
@@ -7419,6 +7464,7 @@ delete_command (char *arg, int from_tty)
 	    b->type != bp_shlib_event &&
 	    b->type != bp_thread_event &&
 	    b->type != bp_overlay_event &&
+            b->type != bp_entry_breakpoint &&
 	    b->number >= 0)
 	  {
 	    breaks_to_delete = 1;
@@ -7436,6 +7482,7 @@ delete_command (char *arg, int from_tty)
 		b->type != bp_shlib_event &&
 		b->type != bp_thread_event &&
 		b->type != bp_overlay_event &&
+                b->type != bp_entry_breakpoint &&
 		b->number >= 0)
 	      delete_breakpoint (b);
 	  }
@@ -7742,6 +7789,9 @@ breakpoint_re_set_one (void *bint)
       /* Like bp_shlib_event, this breakpoint type is special.
 	 Once it is set up, we do not want to touch it.  */
     case bp_thread_event:
+
+      /* Same for this one */
+    case bp_entry_breakpoint:
 
       /* Keep temporary breakpoints, which can be encountered when we step
          over a dlopen call and SOLIB_ADD is resetting the breakpoints.
