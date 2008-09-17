@@ -2138,9 +2138,41 @@ handle_inferior_event (struct execution_control_state *ecs)
     case TARGET_WAITKIND_SYSCALL_RETURN:
       if (debug_infrun)
         fprintf_unfiltered (gdb_stdlog, "infrun: TARGET_WAITKIND_SYSCALL_RETURN\n");
-      target_resume (ecs->ptid, 1, TARGET_SIGNAL_0);
-      prepare_to_wait (ecs);
-      return;
+      if (catch_syscall_enabled () != 0)
+        {
+          stop_signal = TARGET_SIGNAL_TRAP;
+          pending_follow.kind = ecs->ws.kind;
+
+          pending_follow.syscall_number = 
+            gdbarch_get_syscall_number (current_gdbarch, ecs->ptid);
+
+          if (!ptid_equal (ecs->ptid, inferior_ptid))
+            {
+              context_switch (ecs->ptid);
+              reinit_frame_cache ();
+            }
+
+          stop_pc = read_pc ();
+
+          stop_bpstat = bpstat_stop_status (stop_pc, ecs->ptid);
+
+          ecs->random_signal = !bpstat_explains_signal (stop_bpstat);
+
+          /* If no catchpoint triggered for this, then keep going.  */
+          if (ecs->random_signal)
+            {
+              stop_signal = TARGET_SIGNAL_0;
+              keep_going (ecs);
+              return;
+            }
+          goto process_event_stop_test;
+        }
+      else
+        {
+          resume (0, TARGET_SIGNAL_0);
+          prepare_to_wait (ecs);
+          return;
+        }
 
     case TARGET_WAITKIND_STOPPED:
       if (debug_infrun)

@@ -947,13 +947,11 @@ linux_child_insert_syscall_catchpoint (int pid)
 {
   if (! linux_supports_tracesysgood (pid))
     error (_("Your system does not support syscall catchpoints."));
-//  linux_enable_event_reporting (pid_to_ptid (pid));
 }
 
 static int
 linux_child_remove_syscall_catchpoint (int pid)
 {
-//  linux_enable_event_reporting (pid_to_ptid (pid));
   return 0;
 }
 

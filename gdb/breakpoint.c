@@ -2243,6 +2243,13 @@ print_it_typical (bpstat bs)
   struct cleanup *old_chain, *ui_out_chain;
   struct breakpoint *b;
   const struct bp_location *bl;
+  /* Used for "catch syscall".
+     
+     This is needed because we want to know in which state a
+     syscall is. It can be in the TARGET_WAITKIND_SYSCALL_ENTRY
+     or TARGET_WAITKIND_SYSCALL_RETURN, and depending on it we
+     must print "called syscall" or "returned from syscall". */
+  struct thread_info *th_info = find_thread_pid (inferior_ptid);
   struct ui_stream *stb;
   int bp_temp = 0;  
   stb = ui_out_stream_new (uiout);
@@ -2349,8 +2356,10 @@ print_it_typical (bpstat bs)
 
     case bp_catch_syscall:
       annotate_catchpoint (b->number);
-      printf_filtered (_("\nCatchpoint %d (called syscall '%s()'), "),
+      printf_filtered (_("\nCatchpoint %d (%s syscall '%s()'), "),
 		       b->number,
+                       (th_info->syscall_state == TARGET_WAITKIND_SYSCALL_ENTRY)
+                        ? "called" : "returned from",
 		       gdbarch_syscall_name_from_number (current_gdbarch,
                                                          b->syscall_number));
       return PRINT_SRC_AND_LOC;
