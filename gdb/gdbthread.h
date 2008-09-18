@@ -112,8 +112,7 @@ struct thread_info
      in a SYSCALL_RETURN event.
      Values:
      - TARGET_WAITKIND_SYSCALL_ENTRY
-     - TARGET_WAITKIND_SYSCALL_RETURN
-     - Negative if none of the above */
+     - TARGET_WAITKIND_SYSCALL_RETURN */
   int syscall_state;
 };
 

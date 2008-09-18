@@ -1819,6 +1819,8 @@ void
 handle_inferior_event (struct execution_control_state *ecs)
 {
   int sw_single_step_trap_p = 0;
+  /* Used for "catch syscall". */
+  int syscall_number;
   int stopped_by_watchpoint;
   int stepped_after_stopped_by_watchpoint = 0;
   struct symtab_and_line stop_pc_sal;
@@ -2094,7 +2096,10 @@ handle_inferior_event (struct execution_control_state *ecs)
     case TARGET_WAITKIND_SYSCALL_ENTRY:
       if (debug_infrun)
         fprintf_unfiltered (gdb_stdlog, "infrun: TARGET_WAITKIND_SYSCALL_ENTRY\n");
-      if (catch_syscall_enabled () != 0)
+      /* Getting the current syscall number */
+      syscall_number = gdbarch_get_syscall_number (current_gdbarch, ecs->ptid);
+      if (catch_syscall_enabled () > 0
+          && catching_syscall_number (syscall_number) > 0)
         {
           stop_signal = TARGET_SIGNAL_TRAP;
           pending_follow.kind = ecs->ws.kind;
@@ -2138,7 +2143,9 @@ handle_inferior_event (struct execution_control_state *ecs)
     case TARGET_WAITKIND_SYSCALL_RETURN:
       if (debug_infrun)
         fprintf_unfiltered (gdb_stdlog, "infrun: TARGET_WAITKIND_SYSCALL_RETURN\n");
-      if (catch_syscall_enabled () != 0)
+      syscall_number = gdbarch_get_syscall_number (current_gdbarch, ecs->ptid);
+      if (catch_syscall_enabled () > 0
+          && catching_syscall_number (syscall_number) > 0)
         {
           stop_signal = TARGET_SIGNAL_TRAP;
           pending_follow.kind = ecs->ws.kind;

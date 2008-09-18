@@ -911,9 +911,14 @@ extern int breakpoints_always_inserted_mode (void);
    in our opinion won't ever trigger.  */
 extern void breakpoint_retire_moribund (void);
 
-/* Check if we are catching syscalls or not.
+/* Checks if we are catching syscalls or not.
    Returns 0 if not, greater than 0 if we are. */
 extern int catch_syscall_enabled (void);
+
+/* Checks if we are catching syscalls with the specific
+   syscall_number. Used for "filtering" the catchpoints.
+   Returns 0 if not, greater than 0 if we are. */
+extern int catching_syscall_number (int syscall_number);
 
 /* Function used to set an internal breakpoint at the AT_ENTRY
    (a.k.a. the entry point of the inferior).

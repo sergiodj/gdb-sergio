@@ -292,6 +292,10 @@ static int overlay_events_enabled;
 	     B ? (TMP=B->global_next, 1): 0;	\
 	     B = TMP)
 
+/* A number to represent wether we are catching any syscalls. */
+
+#define CATCHING_ANY_SYSCALL (-1)
+
 /* True if breakpoint hit counts should be displayed in breakpoint info.  */
 
 int show_breakpoint_hit_counts = 1;
@@ -6823,7 +6827,7 @@ catch_ada_exception_command (char *arg, int tempflag, int from_tty)
 static void
 catch_syscall_command_1 (char *arg, int tempflag, int from_tty)
 {
-  int syscall_number = -1;
+  int syscall_number = CATCHING_ANY_SYSCALL;
   ep_skip_leading_whitespace (&arg);
 
   /* The allowed syntax is:
@@ -8394,18 +8398,35 @@ static int is_syscall_catchpoint_enabled (struct breakpoint *bp)
 int catch_syscall_enabled (void)
 {
   struct breakpoint *bp;
-  int ret = 0;
 
   ALL_BREAKPOINTS (bp)
     {
       if (is_syscall_catchpoint_enabled (bp))
         {
-          ret = 1;
-          break;
+          return 1;
         }
     }
 
-  return ret;
+  return 0;
+}
+
+int catching_syscall_number (int syscall_number)
+{
+  struct breakpoint *bp;
+
+  ALL_BREAKPOINTS (bp)
+    {
+      if (is_syscall_catchpoint_enabled (bp))
+        {
+          if (bp->syscall_to_be_caught == syscall_number
+              || bp->syscall_to_be_caught == CATCHING_ANY_SYSCALL)
+            {
+              return 1;
+            }
+        }
+    }
+
+  return 0;
 }
 
 
