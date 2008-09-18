@@ -2127,7 +2127,7 @@ handle_inferior_event (struct execution_control_state *ecs)
       if (catch_syscall_enabled () > 0
           && catching_syscall_number (syscall_number) > 0)
         {
-          stop_signal = TARGET_SIGNAL_TRAP;
+          ecs->event_thread->stop_signal = TARGET_SIGNAL_TRAP;
           pending_follow.kind = ecs->ws.kind;
 
           pending_follow.syscall_number = 
@@ -2141,14 +2141,14 @@ handle_inferior_event (struct execution_control_state *ecs)
 
           stop_pc = read_pc ();
 
-          stop_bpstat = bpstat_stop_status (stop_pc, ecs->ptid);
+          ecs->event_thread->stop_bpstat = bpstat_stop_status (stop_pc, ecs->ptid);
 
-          ecs->random_signal = !bpstat_explains_signal (stop_bpstat);
+          ecs->random_signal = !bpstat_explains_signal (ecs->event_thread->stop_bpstat);
 
           /* If no catchpoint triggered for this, then keep going.  */
           if (ecs->random_signal)
             {
-              stop_signal = TARGET_SIGNAL_0;
+              ecs->event_thread->stop_signal = TARGET_SIGNAL_0;
               keep_going (ecs);
               return;
             }
@@ -2173,7 +2173,7 @@ handle_inferior_event (struct execution_control_state *ecs)
       if (catch_syscall_enabled () > 0
           && catching_syscall_number (syscall_number) > 0)
         {
-          stop_signal = TARGET_SIGNAL_TRAP;
+          ecs->event_thread->stop_signal = TARGET_SIGNAL_TRAP;
           pending_follow.kind = ecs->ws.kind;
 
           pending_follow.syscall_number = 
@@ -2187,14 +2187,14 @@ handle_inferior_event (struct execution_control_state *ecs)
 
           stop_pc = read_pc ();
 
-          stop_bpstat = bpstat_stop_status (stop_pc, ecs->ptid);
+          ecs->event_thread->stop_bpstat = bpstat_stop_status (stop_pc, ecs->ptid);
 
-          ecs->random_signal = !bpstat_explains_signal (stop_bpstat);
+          ecs->random_signal = !bpstat_explains_signal (ecs->event_thread->stop_bpstat);
 
           /* If no catchpoint triggered for this, then keep going.  */
           if (ecs->random_signal)
             {
-              stop_signal = TARGET_SIGNAL_0;
+              ecs->event_thread->stop_signal = TARGET_SIGNAL_0;
               keep_going (ecs);
               return;
             }
@@ -3027,7 +3027,7 @@ infrun: BPSTAT_WHAT_SET_LONGJMP_RESUME (!gdbarch_get_longjmp_target)\n");
         if (debug_infrun)
           fprintf_unfiltered (gdb_stdlog, "infrun: BPSTAT_WHAT_ENTRY_BREAKPOINT\n");
         target_enable_tracesysgood (ecs->ptid);
-        tss->stepping_over_breakpoint = 1;
+        ecs->event_thread->stepping_over_breakpoint = 1;
         break;
 
       case BPSTAT_WHAT_LAST:

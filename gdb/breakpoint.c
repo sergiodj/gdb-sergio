@@ -6948,7 +6948,7 @@ catch_syscall_command_1 (char *arg, int from_tty, struct cmd_list_element *comma
 
      Let's check if there's a syscall name. */
 
-  if (*arg != '\0')
+  if (arg != NULL)
     {
       syscall_number = gdbarch_syscall_number_from_name (current_gdbarch,
                                                          (const char *) arg);
