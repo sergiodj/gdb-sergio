@@ -621,39 +621,40 @@ min_of_type (struct type *t)
 }
 
 /* The largest value in the domain of TYPE, a discrete type, as an integer.  */
-static struct value *
+static LONGEST
 discrete_type_high_bound (struct type *type)
 {
   switch (TYPE_CODE (type))
     {
     case TYPE_CODE_RANGE:
-      return value_from_longest (TYPE_TARGET_TYPE (type),
-                                 TYPE_HIGH_BOUND (type));
+      return TYPE_HIGH_BOUND (type);
     case TYPE_CODE_ENUM:
-      return
-        value_from_longest (type,
-                            TYPE_FIELD_BITPOS (type,
-                                               TYPE_NFIELDS (type) - 1));
+      return TYPE_FIELD_BITPOS (type, TYPE_NFIELDS (type) - 1);
+    case TYPE_CODE_BOOL:
+      return 1;
+    case TYPE_CODE_CHAR:
     case TYPE_CODE_INT:
-      return value_from_longest (type, max_of_type (type));
+      return max_of_type (type);
     default:
       error (_("Unexpected type in discrete_type_high_bound."));
     }
 }
 
 /* The largest value in the domain of TYPE, a discrete type, as an integer.  */
-static struct value *
+static LONGEST
 discrete_type_low_bound (struct type *type)
 {
   switch (TYPE_CODE (type))
     {
     case TYPE_CODE_RANGE:
-      return value_from_longest (TYPE_TARGET_TYPE (type),
-                                 TYPE_LOW_BOUND (type));
+      return TYPE_LOW_BOUND (type);
     case TYPE_CODE_ENUM:
-      return value_from_longest (type, TYPE_FIELD_BITPOS (type, 0));
+      return TYPE_FIELD_BITPOS (type, 0);
+    case TYPE_CODE_BOOL:
+      return 0;
+    case TYPE_CODE_CHAR:
     case TYPE_CODE_INT:
-      return value_from_longest (type, min_of_type (type));
+      return min_of_type (type);
     default:
       error (_("Unexpected type in discrete_type_low_bound."));
     }
@@ -1202,22 +1203,11 @@ ada_decode_symbol (const struct general_symbol_info *gsymbol)
   if (*resultp == NULL)
     {
       const char *decoded = ada_decode (gsymbol->name);
-      if (gsymbol->bfd_section != NULL)
+      if (gsymbol->obj_section != NULL)
         {
-          bfd *obfd = gsymbol->bfd_section->owner;
-          if (obfd != NULL)
-            {
-              struct objfile *objf;
-              ALL_OBJFILES (objf)
-              {
-                if (obfd == objf->obfd)
-                  {
-                    *resultp = obsavestring (decoded, strlen (decoded),
-                                             &objf->objfile_obstack);
-                    break;
-                  }
-              }
-            }
+	  struct objfile *objf = gsymbol->obj_section->objfile;
+	  *resultp = obsavestring (decoded, strlen (decoded),
+				   &objf->objfile_obstack);
         }
       /* Sometimes, we can't find a corresponding objfile, in which
          case, we put the result on the heap.  Since we only decode
@@ -1828,7 +1818,7 @@ packed_array_type (struct type *type, long *elt_bits)
         (*elt_bits + HOST_CHAR_BIT - 1) / HOST_CHAR_BIT;
     }
 
-  TYPE_FLAGS (new_type) |= TYPE_FLAG_FIXED_INSTANCE;
+  TYPE_FIXED_INSTANCE (new_type) = 1;
   return new_type;
 }
 
@@ -6901,7 +6891,6 @@ empty_record (struct objfile *objfile)
   TYPE_FIELDS (type) = NULL;
   TYPE_NAME (type) = "<empty>";
   TYPE_TAG_NAME (type) = NULL;
-  TYPE_FLAGS (type) = 0;
   TYPE_LENGTH (type) = 0;
   return type;
 }
@@ -6961,7 +6950,7 @@ ada_template_to_fixed_record_type_1 (struct type *type,
   memset (TYPE_FIELDS (rtype), 0, sizeof (struct field) * nfields);
   TYPE_NAME (rtype) = ada_type_name (type);
   TYPE_TAG_NAME (rtype) = NULL;
-  TYPE_FLAGS (rtype) |= TYPE_FLAG_FIXED_INSTANCE;
+  TYPE_FIXED_INSTANCE (rtype) = 1;
 
   off = 0;
   bit_len = 0;
@@ -7141,7 +7130,7 @@ template_to_static_fixed_type (struct type *type0)
                   sizeof (struct field) * nfields);
           TYPE_NAME (type) = ada_type_name (type0);
           TYPE_TAG_NAME (type) = NULL;
-          TYPE_FLAGS (type) |= TYPE_FLAG_FIXED_INSTANCE;
+	  TYPE_FIXED_INSTANCE (type) = 1;
           TYPE_LENGTH (type) = 0;
         }
       TYPE_FIELD_TYPE (type, f) = new_type;
@@ -7186,7 +7175,7 @@ to_record_with_fixed_variant_part (struct type *type, const gdb_byte *valaddr,
           sizeof (struct field) * nfields);
   TYPE_NAME (rtype) = ada_type_name (type);
   TYPE_TAG_NAME (rtype) = NULL;
-  TYPE_FLAGS (rtype) |= TYPE_FLAG_FIXED_INSTANCE;
+  TYPE_FIXED_INSTANCE (rtype) = 1;
   TYPE_LENGTH (rtype) = TYPE_LENGTH (type);
 
   branch_type = to_fixed_variant_branch_type
@@ -7241,7 +7230,7 @@ to_fixed_record_type (struct type *type0, const gdb_byte *valaddr,
 {
   struct type *templ_type;
 
-  if (TYPE_FLAGS (type0) & TYPE_FLAG_FIXED_INSTANCE)
+  if (TYPE_FIXED_INSTANCE (type0))
     return type0;
 
   templ_type = dynamic_template_type (type0);
@@ -7257,7 +7246,7 @@ to_fixed_record_type (struct type *type0, const gdb_byte *valaddr,
     }
   else
     {
-      TYPE_FLAGS (type0) |= TYPE_FLAG_FIXED_INSTANCE;
+      TYPE_FIXED_INSTANCE (type0) = 1;
       return type0;
     }
 
@@ -7322,7 +7311,7 @@ to_fixed_array_type (struct type *type0, struct value *dval,
   struct type *result;
 
   if (ada_is_packed_array_type (type0)  /* revisit? */
-      || (TYPE_FLAGS (type0) & TYPE_FLAG_FIXED_INSTANCE))
+      || TYPE_FIXED_INSTANCE (type0))
     return type0;
 
   index_type_desc = ada_find_parallel_type (type0, "___XA");
@@ -7382,7 +7371,7 @@ to_fixed_array_type (struct type *type0, struct value *dval,
         error (_("array type with dynamic size is larger than varsize-limit"));
     }
 
-  TYPE_FLAGS (result) |= TYPE_FLAG_FIXED_INSTANCE;
+  TYPE_FIXED_INSTANCE (result) = 1;
   return result;
 }
 
@@ -7472,7 +7461,7 @@ to_static_fixed_type (struct type *type0)
   if (type0 == NULL)
     return NULL;
 
-  if (TYPE_FLAGS (type0) & TYPE_FLAG_FIXED_INSTANCE)
+  if (TYPE_FIXED_INSTANCE (type0))
     return type0;
 
   type0 = ada_check_typedef (type0);
@@ -7634,7 +7623,8 @@ ada_attribute_name (enum exp_opcode n)
 static LONGEST
 pos_atr (struct value *arg)
 {
-  struct type *type = value_type (arg);
+  struct value *val = coerce_ref (arg);
+  struct type *type = value_type (val);
 
   if (!discrete_type_p (type))
     error (_("'POS only defined on discrete types"));
@@ -7642,7 +7632,7 @@ pos_atr (struct value *arg)
   if (TYPE_CODE (type) == TYPE_CODE_ENUM)
     {
       int i;
-      LONGEST v = value_as_long (arg);
+      LONGEST v = value_as_long (val);
 
       for (i = 0; i < TYPE_NFIELDS (type); i += 1)
         {
@@ -7652,7 +7642,7 @@ pos_atr (struct value *arg)
       error (_("enumeration value is invalid: can't find 'POS"));
     }
   else
-    return value_as_long (arg);
+    return value_as_long (val);
 }
 
 static struct value *
@@ -8976,9 +8966,11 @@ ada_evaluate_subexp (struct type *expect_type, struct expression *exp,
               default:
                 error (_("unexpected attribute encountered"));
               case OP_ATR_FIRST:
-                return discrete_type_low_bound (range_type);
+		return value_from_longest 
+		  (range_type, discrete_type_low_bound (range_type));
               case OP_ATR_LAST:
-                return discrete_type_high_bound (range_type);
+                return value_from_longest
+		  (range_type, discrete_type_high_bound (range_type));
               case OP_ATR_LENGTH:
                 error (_("the 'length attribute applies only to array types"));
               }
@@ -9499,7 +9491,16 @@ to_fixed_range_type (char *name, struct value *dval, struct objfile *objfile)
 
   subtype_info = strstr (name, "___XD");
   if (subtype_info == NULL)
-    return raw_type;
+    {
+      LONGEST L = discrete_type_low_bound (raw_type);
+      LONGEST U = discrete_type_high_bound (raw_type);
+      if (L < INT_MIN || U > INT_MAX)
+	return raw_type;
+      else
+	return create_range_type (alloc_type (objfile), raw_type, 
+				  discrete_type_low_bound (raw_type),
+				  discrete_type_high_bound (raw_type));
+    }
   else
     {
       static char *name_buf = NULL;
@@ -9586,7 +9587,7 @@ ada_is_modular_type (struct type *type)
   struct type *subranged_type = base_type (type);
 
   return (subranged_type != NULL && TYPE_CODE (type) == TYPE_CODE_RANGE
-          && TYPE_CODE (subranged_type) != TYPE_CODE_ENUM
+          && TYPE_CODE (subranged_type) == TYPE_CODE_INT
           && TYPE_UNSIGNED (subranged_type));
 }
 

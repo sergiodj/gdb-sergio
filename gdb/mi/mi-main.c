@@ -110,35 +110,35 @@ void
 mi_cmd_exec_next (char *command, char **argv, int argc)
 {
   /* FIXME: Should call a libgdb function, not a cli wrapper.  */
-  return mi_execute_async_cli_command ("next", argv, argc);
+  mi_execute_async_cli_command ("next", argv, argc);
 }
 
 void
 mi_cmd_exec_next_instruction (char *command, char **argv, int argc)
 {
   /* FIXME: Should call a libgdb function, not a cli wrapper.  */
-  return mi_execute_async_cli_command ("nexti", argv, argc);
+  mi_execute_async_cli_command ("nexti", argv, argc);
 }
 
 void
 mi_cmd_exec_step (char *command, char **argv, int argc)
 {
   /* FIXME: Should call a libgdb function, not a cli wrapper.  */
-  return mi_execute_async_cli_command ("step", argv, argc);
+  mi_execute_async_cli_command ("step", argv, argc);
 }
 
 void
 mi_cmd_exec_step_instruction (char *command, char **argv, int argc)
 {
   /* FIXME: Should call a libgdb function, not a cli wrapper.  */
-  return mi_execute_async_cli_command ("stepi", argv, argc);
+  mi_execute_async_cli_command ("stepi", argv, argc);
 }
 
 void
 mi_cmd_exec_finish (char *command, char **argv, int argc)
 {
   /* FIXME: Should call a libgdb function, not a cli wrapper.  */
-  return mi_execute_async_cli_command ("finish", argv, argc);
+  mi_execute_async_cli_command ("finish", argv, argc);
 }
 
 void
@@ -915,7 +915,25 @@ mi_cmd_list_features (char *command, char **argv, int argc)
 
   error ("-list-features should be passed no arguments");
 }
- 
+
+void
+mi_cmd_list_target_features (char *command, char **argv, int argc)
+{
+  if (argc == 0)
+    {
+      struct cleanup *cleanup = NULL;
+      cleanup = make_cleanup_ui_out_list_begin_end (uiout, "features");      
+
+      if (target_can_async_p ())
+	ui_out_field_string (uiout, NULL, "async");
+      
+      do_cleanups (cleanup);
+      return;
+    }
+
+  error ("-list-target-features should be passed no arguments");
+}
+
 /* Execute a command within a safe environment.
    Return <0 for error; >=0 for ok.
 
@@ -1076,19 +1094,19 @@ mi_cmd_execute (struct mi_parse *parse)
 
   if (parse->frame != -1 && parse->thread == -1)
     error (_("Cannot specify --frame without --thread"));
-  
+
   if (parse->thread != -1)
     {
       struct thread_info *tp = find_thread_id (parse->thread);
       if (!tp)
 	error (_("Invalid thread id: %d"), parse->thread);
-      
-      if (non_stop)
-	context_switch_to (tp->ptid);
-      else
-	switch_to_thread (tp->ptid);
+
+      if (is_exited (tp->ptid))
+	error (_("Thread id: %d has terminated"), parse->thread);
+
+      switch_to_thread (tp->ptid);
     }
-  
+
   if (parse->frame != -1)
     {
       struct frame_info *fid;
@@ -1100,7 +1118,7 @@ mi_cmd_execute (struct mi_parse *parse)
       else
 	error (_("Invalid frame id: %d"), frame);
     }
-  
+
   if (parse->cmd->argv_func != NULL)
     {
       if (target_can_async_p ()

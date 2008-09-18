@@ -318,8 +318,8 @@ do
 	# An optional expression that convers MEMBER to a value
 	# suitable for formatting using %s.
 
-	# If PRINT is empty, paddr_nz (for CORE_ADDR) or paddr_d
-	# (anything else) is used.
+	# If PRINT is empty, core_addr_to_string_nz (for CORE_ADDR)
+	# or plongest (anything else) is used.
 
     garbage_at_eol ) : ;;
 
@@ -343,7 +343,7 @@ i:int:byte_order_for_code:::BFD_ENDIAN_BIG
 #
 i:enum gdb_osabi:osabi:::GDB_OSABI_UNKNOWN
 #
-i:const struct target_desc *:target_desc:::::::paddr_d ((long) gdbarch->target_desc)
+i:const struct target_desc *:target_desc:::::::plongest ((long) gdbarch->target_desc)
 
 # The bit byte-order has to do just with numbering of bits in debugging symbols
 # and such.  Conceptually, it's quite separate from byte/word byte order.
@@ -529,10 +529,10 @@ m:CORE_ADDR:convert_from_func_ptr_addr:CORE_ADDR addr, struct target_ops *targ:a
 # being a few stray bits in the PC which would mislead us, not as some
 # sort of generic thing to handle alignment or segmentation (it's
 # possible it should be in TARGET_READ_PC instead).
-f:CORE_ADDR:addr_bits_remove:CORE_ADDR addr:addr::core_addr_identity::0
+m:CORE_ADDR:addr_bits_remove:CORE_ADDR addr:addr::core_addr_identity::0
 # It is not at all clear why gdbarch_smash_text_address is not folded into
 # gdbarch_addr_bits_remove.
-f:CORE_ADDR:smash_text_address:CORE_ADDR addr:addr::core_addr_identity::0
+m:CORE_ADDR:smash_text_address:CORE_ADDR addr:addr::core_addr_identity::0
 
 # FIXME/cagney/2001-01-18: This should be split in two.  A target method that
 # indicates if the target needs software single step.  An ISA method to
@@ -822,6 +822,7 @@ struct displaced_step_closure;
 struct core_regset_section;
 
 extern struct gdbarch *current_gdbarch;
+extern struct gdbarch *target_gdbarch;
 EOF
 
 # function typedef's
@@ -1137,6 +1138,7 @@ cat <<EOF
 #include "osabi.h"
 #include "gdb_obstack.h"
 #include "observer.h"
+#include "regcache.h"
 
 /* Static function declarations */
 
@@ -1280,6 +1282,7 @@ cat <<EOF
 };
 
 struct gdbarch *current_gdbarch = &startup_gdbarch;
+struct gdbarch *target_gdbarch = &startup_gdbarch;
 EOF
 
 # Create a new gdbarch struct
@@ -1471,12 +1474,12 @@ do
 	# It is a variable
 	case "${print}:${returntype}" in
 	    :CORE_ADDR )
-		fmt="0x%s"
-		print="paddr_nz (gdbarch->${function})"
+		fmt="%s"
+		print="core_addr_to_string_nz (gdbarch->${function})"
 		;;
 	    :* )
 	        fmt="%s"
-		print="paddr_d (gdbarch->${function})"
+		print="plongest (gdbarch->${function})"
 		;;
 	    * )
 	        fmt="%s"
@@ -2021,8 +2024,9 @@ deprecated_current_gdbarch_select_hack (struct gdbarch *new_gdbarch)
   gdb_assert (current_gdbarch != NULL);
   gdb_assert (new_gdbarch->initialized_p);
   current_gdbarch = new_gdbarch;
+  target_gdbarch = new_gdbarch;
   observer_notify_architecture_changed (new_gdbarch);
-  reinit_frame_cache ();
+  registers_changed ();
 }
 
 extern void _initialize_gdbarch (void);

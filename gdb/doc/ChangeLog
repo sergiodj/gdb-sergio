@@ -1,3 +1,82 @@
+2008-09-03  Angela Marie Thomas <angela@releasedominatrix.com>
+
+	* gdb.texinfo (Interrupts): Mention TCP interface for
+	sending BREAK.
+
+2008-08-26  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* gdb.texinfo (Commands to Specify Files): Document "remote:"
+	argument prefix to "set sysroot".
+
+2008-08-21  Paul N. Hilfinger  <hilfinger@adacore.com>
+
+	* gdb.texinfo (Omissions from Ada): Describe new treatment of True
+	and False.
+
+2008-08-20  Vladimir Prus  <vladimir@codesourcery.com>
+
+        * gdb.textinfo (GDB/MI Miscellaneous Commands): Use @table
+        for possible features of -list-features.
+
+2008-08-19  Vladimir Prus  <vladimir@codesourcery.com>
+
+        * gdb.texinfo (Background execution): Adjust example
+	(GDB/MI Miscellaneous Commands): Document -list-target-features.
+
+2008-08-19  Vladimir Prus  <vladimir@codesourcery.com>
+
+	* doc/gdb.texinfo (PowerPC): Fix typo.
+	(PowerPC features): Fix typo.
+
+2008-08-18  Pedro Alves  <pedro@codesourcery.com>
+
+	* observer.texi (thread_ptid_changed): New.
+
+2008-08-18  Luis Machado  <luisgpm@br.ibm.com>
+
+	* doc/gdb.texinfo (PowerPC): Mention Extended FPR's for POWER7.
+	(PowerPC features): Mention feature set for VSX registers.
+
+2008-08-13  Joel Brobecker  <brobecker@adacore.com>
+
+	* gdb.texinfo (Ada Mode Intro): Improve the documentation regarding
+	the direct visibility of all names in user-written packages.
+
+2008-08-13  Pedro Alves  <pedro@codesourcery.com>
+
+	* gdb.texinfo (breakpoint always-inserted) Describe the auto mode
+	setting, and make it the default.
+	(Non-Stop Mode): Remove "set breakpoints always-inserted 1" from
+	non-stop script example.
+
+2008-08-12  Thiago Jung Bauermann  <bauerman@br.ibm.com>
+
+	* gdbint.texinfo (Raw and Virtual Register Representations): Fix
+	reference to the "Using Different Register and Memory Data
+	Representation" section.
+
+2008-08-12  Sandra Loosemore  <sandra@codesourcery.com>
+
+	* gdb.texinfo (Remote Configuration): Document set remote noack-packet.
+	(Remote Protocol): Add Packet Acknowledgment to menu.
+	(Overview): Mention +/- can be disabled, and point to new section
+	where this is discussed in detail.
+	(General Query Packets): Document QStartNoAckMode packet, and
+	corresponding qSupported reply.
+	(Packet Acknowledgment): New section.
+
+2008-08-11  Sandra Loosemore  <sandra@codesourcery.com>
+	    Pedro Alves  <pedro@codesourcery.com>
+
+	* gdb.texinfo (Threads): Move paragraph about automatic thread
+	selection to All-Stop Mode subsection.
+	(Thread Stops): Reorganize existing material into subsections.
+	Add introductory blurb and menu.
+	(Non-Stop Mode): New subsection.
+	(Background Execution): New subsection.
+	(Maintenance Commands): Add cross-references from async mode
+	commands to the new Background Execution section.
+
 2008-08-06  Tom Tromey  <tromey@redhat.com>
 
 	* gdb.texinfo (Extending GDB): New chapter.

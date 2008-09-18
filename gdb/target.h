@@ -427,6 +427,7 @@ struct target_ops
     int (*to_is_async_p) (void);
     void (*to_async) (void (*) (enum inferior_event_type, void *), void *);
     int (*to_async_mask) (int);
+    int (*to_supports_non_stop) (void);
     int (*to_find_memory_regions) (int (*) (CORE_ADDR,
 					    unsigned long,
 					    int, int, int,
@@ -982,11 +983,17 @@ int target_follow_fork (int follow_child);
 #define target_can_lock_scheduler \
      (current_target.to_has_thread_control & tc_schedlock)
 
+/* Should the target enable async mode if it is supported?  Temporary
+   cludge until async mode is a strict superset of sync mode.  */
+extern int target_async_permitted;
+
 /* Can the target support asynchronous execution? */
 #define target_can_async_p() (current_target.to_can_async_p ())
 
 /* Is the target in asynchronous execution mode? */
 #define target_is_async_p() (current_target.to_is_async_p ())
+
+int target_supports_non_stop (void);
 
 /* Put the target in async mode with the specified callback function. */
 #define target_async(CALLBACK,CONTEXT) \
@@ -1197,6 +1204,17 @@ extern void target_pre_inferior (int);
 extern void target_preopen (int);
 
 extern void pop_target (void);
+
+/* Does whatever cleanup is required to get rid of all pushed targets.
+   QUITTING is propagated to target_close; it indicates that GDB is
+   exiting and should not get hung on an error (otherwise it is
+   important to perform clean termination, even if it takes a
+   while).  */
+extern void pop_all_targets (int quitting);
+
+/* Like pop_all_targets, but pops only targets whose stratum is
+   strictly above ABOVE_STRATUM.  */
+extern void pop_all_targets_above (enum strata above_stratum, int quitting);
 
 extern CORE_ADDR target_translate_tls_address (struct objfile *objfile,
 					       CORE_ADDR offset);

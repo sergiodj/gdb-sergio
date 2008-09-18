@@ -489,16 +489,18 @@ extern void gdb_print_host_address (const void *addr, struct ui_file *stream);
 extern const char *host_address_to_string (const void *addr);
 
 /* Convert a CORE_ADDR into a HEX string.  paddr() is like %08lx.
-   paddr_nz() is like %lx.  paddr_u() is like %lu. paddr_width() is
-   for ``%*''. */
+   paddr_nz() is like %lx.  */
 extern int strlen_paddr (void);
 extern char *paddr (CORE_ADDR addr);
 extern char *paddr_nz (CORE_ADDR addr);
-extern char *paddr_u (CORE_ADDR addr);
-extern char *paddr_d (LONGEST addr);
 
 /* Like 0x%lx.  */
 extern const char *paddress (CORE_ADDR addr);
+
+/* %d for LONGEST */
+extern char *plongest (LONGEST l);
+/* %u for ULONGEST */
+extern char *pulongest (ULONGEST l);
 
 extern char *phex (ULONGEST l, int sizeof_l);
 extern char *phex_nz (ULONGEST l, int sizeof_l);
@@ -668,7 +670,7 @@ struct command_line
     struct command_line **body_list;
   };
 
-extern struct command_line *read_command_lines (char *, int);
+extern struct command_line *read_command_lines (char *, int, int);
 
 extern void free_command_lines (struct command_line **);
 
@@ -679,22 +681,24 @@ extern void free_command_lines (struct command_line **);
    when opening an extended-remote connection. */
 
 struct continuation;
-
-/* In infrun.c. */
-extern struct continuation *cmd_continuation;
-/* Used only by the step_1 function. */
-extern struct continuation *intermediate_continuation;
+struct thread_info;
 
 /* From utils.c */
-extern void add_continuation (void (*)(void *), void *,
+extern void add_continuation (struct thread_info *,
+			      void (*)(void *), void *,
 			      void (*)(void *));
 extern void do_all_continuations (void);
+extern void do_all_continuations_thread (struct thread_info *);
 extern void discard_all_continuations (void);
+extern void discard_all_continuations_thread (struct thread_info *);
 
-extern void add_intermediate_continuation (void (*)(void *), void *,
+extern void add_intermediate_continuation (struct thread_info *,
+					   void (*)(void *), void *,
 					   void (*)(void *));
 extern void do_all_intermediate_continuations (void);
+extern void do_all_intermediate_continuations_thread (struct thread_info *);
 extern void discard_all_intermediate_continuations (void);
+extern void discard_all_intermediate_continuations_thread (struct thread_info *);
 
 /* String containing the current directory (what getwd would return).  */
 

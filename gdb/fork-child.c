@@ -397,6 +397,12 @@ fork_inferior (char *exec_file_arg, char *allargs, char **env,
   /* Needed for wait_for_inferior stuff below.  */
   inferior_ptid = pid_to_ptid (pid);
 
+  /* We have something that executes now.  We'll be running through
+     the shell at this point, but the pid shouldn't change.  Targets
+     supporting MT should fill this task's ptid with more data as soon
+     as they can.  */
+  add_thread_silent (inferior_ptid);
+
   /* Now that we have a child process, make it our target, and
      initialize anything target-vector-specific that needs
      initializing.  */
@@ -428,15 +434,18 @@ startup_inferior (int ntraps)
 
   while (1)
     {
+      struct thread_info *tp;
+
       /* Make wait_for_inferior be quiet. */
       stop_soon = STOP_QUIETLY;
       wait_for_inferior (1);
-      if (stop_signal != TARGET_SIGNAL_TRAP)
+      tp = inferior_thread ();
+      if (tp->stop_signal != TARGET_SIGNAL_TRAP)
 	{
 	  /* Let shell child handle its own signals in its own way.
 	     FIXME: what if child has exited?  Must exit loop
 	     somehow.  */
-	  resume (0, stop_signal);
+	  resume (0, tp->stop_signal);
 	}
       else
 	{

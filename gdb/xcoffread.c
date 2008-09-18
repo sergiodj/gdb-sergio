@@ -1427,7 +1427,7 @@ read_xcoff_symtab (struct partial_symtab *pst)
 
 
 #define	SYMNAME_ALLOC(NAME, ALLOCED)	\
-  (ALLOCED) ? (NAME) : obsavestring ((NAME), strlen (NAME), &objfile->objfile_obstack);
+  ((ALLOCED) ? (NAME) : obsavestring ((NAME), strlen (NAME), &objfile->objfile_obstack))
 
 
 /* process one xcoff symbol. */
@@ -1474,7 +1474,7 @@ process_xcoff_symbol (struct coff_symbol *cs, struct objfile *objfile)
          will be patched with the type from its stab entry later on in
          patch_block_stabs (), unless the file was compiled without -g.  */
 
-      DEPRECATED_SYMBOL_NAME (sym) = SYMNAME_ALLOC (name, symname_alloced);
+      SYMBOL_SET_LINKAGE_NAME (sym, SYMNAME_ALLOC (name, symname_alloced));
       SYMBOL_TYPE (sym) = builtin_type (gdbarch)->nodebug_text_symbol;
 
       SYMBOL_CLASS (sym) = LOC_BLOCK;
@@ -2755,6 +2755,14 @@ scan_xcoff_symtab (struct objfile *objfile)
 		    function_outside_compilation_unit_complaint (name);
 		    xfree (name);
 		  }
+
+		/* We need only the minimal symbols for these
+		   loader-generated definitions.   Keeping the global
+		   symbols leads to "in psymbols but not in symbols"
+		   errors. */
+		if (strncmp (namestring, "@FIX", 4) == 0)
+		  continue;
+
 		symbol.n_value += ANOFFSET (objfile->section_offsets, SECT_OFF_TEXT (objfile));
 		add_psymbol_to_list (namestring, p - namestring,
 				     VAR_DOMAIN, LOC_BLOCK,

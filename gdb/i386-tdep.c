@@ -1712,8 +1712,8 @@ i386_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
      (i386_frame_this_id, i386_sigtramp_frame_this_id,
      i386_dummy_id).  It's there, since all frame unwinders for
      a given target have to agree (within a certain margin) on the
-     definition of the stack address of a frame.  Otherwise
-     frame_id_inner() won't work correctly.  Since DWARF2/GCC uses the
+     definition of the stack address of a frame.  Otherwise frame id
+     comparison might not work correctly.  Since DWARF2/GCC uses the
      stack address *before* the function call as a frame's CFA.  On
      the i386, when %ebp is used as a frame pointer, the offset
      between the contents %ebp and the CFA as defined by GCC.  */
@@ -2038,7 +2038,7 @@ i386_mmx_type (struct gdbarch *gdbarch)
       append_composite_type_field (t, "v8_int8",
 				   init_vector_type (builtin_type_int8, 8));
 
-      TYPE_FLAGS (t) |= TYPE_FLAG_VECTOR;
+      TYPE_VECTOR (t) = 1;
       TYPE_NAME (t) = "builtin_type_vec64i";
       tdep->i386_mmx_type = t;
     }
@@ -2084,7 +2084,7 @@ i386_sse_type (struct gdbarch *gdbarch)
 				   init_vector_type (builtin_type_int64, 2));
       append_composite_type_field (t, "uint128", builtin_type_int128);
 
-      TYPE_FLAGS (t) |= TYPE_FLAG_VECTOR;
+      TYPE_VECTOR (t) = 1;
       TYPE_NAME (t) = "builtin_type_vec128i";
       tdep->i386_sse_type = t;
     }
@@ -2624,6 +2624,18 @@ i386_fetch_pointer_argument (struct frame_info *frame, int argi,
   return read_memory_unsigned_integer (sp + (4 * (argi + 1)), 4);
 }
 
+static void
+i386_skip_permanent_breakpoint (struct regcache *regcache)
+{
+  CORE_ADDR current_pc = regcache_read_pc (regcache);
+
+ /* On i386, breakpoint is exactly 1 byte long, so we just
+    adjust the PC in the regcache.  */
+  current_pc += 1;
+  regcache_write_pc (regcache, current_pc);
+}
+
+
 
 static struct gdbarch *
 i386_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
@@ -2811,6 +2823,9 @@ i386_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
      pseudo-register.  */
   if (tdep->mm0_regnum == 0)
     tdep->mm0_regnum = gdbarch_num_regs (gdbarch);
+
+  set_gdbarch_skip_permanent_breakpoint (gdbarch,
+					 i386_skip_permanent_breakpoint);
 
   return gdbarch;
 }

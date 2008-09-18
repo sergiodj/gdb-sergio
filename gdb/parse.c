@@ -53,6 +53,7 @@
 #include "source.h"
 #include "objfiles.h"
 #include "exceptions.h"
+#include "user-regs.h"
 
 /* Standard set of definitions for printing, dumping, prefixifying,
  * and evaluating expressions.  */
@@ -414,7 +415,7 @@ write_exp_msymbol (struct minimal_symbol *msymbol,
   struct gdbarch *gdbarch = get_objfile_arch (objfile);
 
   CORE_ADDR addr = SYMBOL_VALUE_ADDRESS (msymbol);
-  asection *bfd_section = SYMBOL_BFD_SECTION (msymbol);
+  struct obj_section *section = SYMBOL_OBJ_SECTION (msymbol);
   enum minimal_symbol_type type = msymbol->type;
   CORE_ADDR pc;
 
@@ -426,12 +427,12 @@ write_exp_msymbol (struct minimal_symbol *msymbol,
       /* In this case, assume we have a code symbol instead of
 	 a data symbol.  */
       type = mst_text;
-      bfd_section = NULL;
+      section = NULL;
       addr = pc;
     }
 
   if (overlay_debugging)
-    addr = symbol_overlayed_address (addr, bfd_section);
+    addr = symbol_overlayed_address (addr, section);
 
   write_exp_elt_opcode (OP_LONG);
   /* Let's make the type big enough to hold a 64-bit address.  */
@@ -439,7 +440,7 @@ write_exp_msymbol (struct minimal_symbol *msymbol,
   write_exp_elt_longcst ((LONGEST) addr);
   write_exp_elt_opcode (OP_LONG);
 
-  if (bfd_section && bfd_section->flags & SEC_THREAD_LOCAL)
+  if (section && section->the_bfd_section->flags & SEC_THREAD_LOCAL)
     {
       write_exp_elt_opcode (UNOP_MEMVAL_TLS);
       write_exp_elt_objfile (objfile);
@@ -543,8 +544,8 @@ write_dollar_variable (struct stoken str)
 
   /* Handle tokens that refer to machine registers:
      $ followed by a register name.  */
-  i = frame_map_name_to_regnum (deprecated_safe_get_selected_frame (),
-				str.ptr + 1, str.length - 1);
+  i = user_reg_map_name_to_regnum (current_gdbarch,
+				   str.ptr + 1, str.length - 1);
   if (i >= 0)
     goto handle_register;
 

@@ -48,6 +48,7 @@
 #include "osabi.h"
 #include "gdb_obstack.h"
 #include "observer.h"
+#include "regcache.h"
 
 /* Static function declarations */
 
@@ -337,8 +338,8 @@ struct gdbarch startup_gdbarch =
   default_stabs_argument_has_addr,  /* stabs_argument_has_addr */
   0,  /* frame_red_zone_size */
   convert_from_func_ptr_addr_identity,  /* convert_from_func_ptr_addr */
-  0,  /* addr_bits_remove */
-  0,  /* smash_text_address */
+  core_addr_identity,  /* addr_bits_remove */
+  core_addr_identity,  /* smash_text_address */
   0,  /* software_single_step */
   0,  /* single_step_through_delay */
   0,  /* print_insn */
@@ -379,6 +380,7 @@ struct gdbarch startup_gdbarch =
 };
 
 struct gdbarch *current_gdbarch = &startup_gdbarch;
+struct gdbarch *target_gdbarch = &startup_gdbarch;
 
 /* Create a new ``struct gdbarch'' based on information provided by
    ``struct gdbarch_info''. */
@@ -652,7 +654,7 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
                       gdb_nm_file);
   fprintf_unfiltered (file,
                       "gdbarch_dump: addr_bit = %s\n",
-                      paddr_d (gdbarch->addr_bit));
+                      plongest (gdbarch->addr_bit));
   fprintf_unfiltered (file,
                       "gdbarch_dump: addr_bits_remove = <0x%lx>\n",
                       (long) gdbarch->addr_bits_remove);
@@ -685,37 +687,37 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
                       (long) gdbarch->adjust_breakpoint_address);
   fprintf_unfiltered (file,
                       "gdbarch_dump: believe_pcc_promotion = %s\n",
-                      paddr_d (gdbarch->believe_pcc_promotion));
+                      plongest (gdbarch->believe_pcc_promotion));
   fprintf_unfiltered (file,
                       "gdbarch_dump: bfd_arch_info = %s\n",
                       gdbarch_bfd_arch_info (gdbarch)->printable_name);
   fprintf_unfiltered (file,
                       "gdbarch_dump: bits_big_endian = %s\n",
-                      paddr_d (gdbarch->bits_big_endian));
+                      plongest (gdbarch->bits_big_endian));
   fprintf_unfiltered (file,
                       "gdbarch_dump: breakpoint_from_pc = <0x%lx>\n",
                       (long) gdbarch->breakpoint_from_pc);
   fprintf_unfiltered (file,
                       "gdbarch_dump: byte_order = %s\n",
-                      paddr_d (gdbarch->byte_order));
+                      plongest (gdbarch->byte_order));
   fprintf_unfiltered (file,
                       "gdbarch_dump: byte_order_for_code = %s\n",
-                      paddr_d (gdbarch->byte_order_for_code));
+                      plongest (gdbarch->byte_order_for_code));
   fprintf_unfiltered (file,
                       "gdbarch_dump: call_dummy_location = %s\n",
-                      paddr_d (gdbarch->call_dummy_location));
+                      plongest (gdbarch->call_dummy_location));
   fprintf_unfiltered (file,
                       "gdbarch_dump: cannot_fetch_register = <0x%lx>\n",
                       (long) gdbarch->cannot_fetch_register);
   fprintf_unfiltered (file,
                       "gdbarch_dump: cannot_step_breakpoint = %s\n",
-                      paddr_d (gdbarch->cannot_step_breakpoint));
+                      plongest (gdbarch->cannot_step_breakpoint));
   fprintf_unfiltered (file,
                       "gdbarch_dump: cannot_store_register = <0x%lx>\n",
                       (long) gdbarch->cannot_store_register);
   fprintf_unfiltered (file,
                       "gdbarch_dump: char_signed = %s\n",
-                      paddr_d (gdbarch->char_signed));
+                      plongest (gdbarch->char_signed));
   fprintf_unfiltered (file,
                       "gdbarch_dump: coff_make_msymbol_special = <0x%lx>\n",
                       (long) gdbarch->coff_make_msymbol_special);
@@ -744,14 +746,14 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
                       "gdbarch_dump: core_xfer_shared_libraries = <0x%lx>\n",
                       (long) gdbarch->core_xfer_shared_libraries);
   fprintf_unfiltered (file,
-                      "gdbarch_dump: decr_pc_after_break = 0x%s\n",
-                      paddr_nz (gdbarch->decr_pc_after_break));
+                      "gdbarch_dump: decr_pc_after_break = %s\n",
+                      core_addr_to_string_nz (gdbarch->decr_pc_after_break));
   fprintf_unfiltered (file,
                       "gdbarch_dump: deprecated_fp_regnum = %s\n",
-                      paddr_d (gdbarch->deprecated_fp_regnum));
+                      plongest (gdbarch->deprecated_fp_regnum));
   fprintf_unfiltered (file,
-                      "gdbarch_dump: deprecated_function_start_offset = 0x%s\n",
-                      paddr_nz (gdbarch->deprecated_function_start_offset));
+                      "gdbarch_dump: deprecated_function_start_offset = %s\n",
+                      core_addr_to_string_nz (gdbarch->deprecated_function_start_offset));
   fprintf_unfiltered (file,
                       "gdbarch_dump: gdbarch_displaced_step_copy_insn_p() = %d\n",
                       gdbarch_displaced_step_copy_insn_p (gdbarch));
@@ -772,7 +774,7 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
                       (long) gdbarch->displaced_step_location);
   fprintf_unfiltered (file,
                       "gdbarch_dump: double_bit = %s\n",
-                      paddr_d (gdbarch->double_bit));
+                      plongest (gdbarch->double_bit));
   fprintf_unfiltered (file,
                       "gdbarch_dump: double_format = %s\n",
                       pformat (gdbarch->double_format));
@@ -805,13 +807,13 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
                       (long) gdbarch->fetch_tls_load_module_address);
   fprintf_unfiltered (file,
                       "gdbarch_dump: float_bit = %s\n",
-                      paddr_d (gdbarch->float_bit));
+                      plongest (gdbarch->float_bit));
   fprintf_unfiltered (file,
                       "gdbarch_dump: float_format = %s\n",
                       pformat (gdbarch->float_format));
   fprintf_unfiltered (file,
                       "gdbarch_dump: fp0_regnum = %s\n",
-                      paddr_d (gdbarch->fp0_regnum));
+                      plongest (gdbarch->fp0_regnum));
   fprintf_unfiltered (file,
                       "gdbarch_dump: gdbarch_frame_align_p() = %d\n",
                       gdbarch_frame_align_p (gdbarch));
@@ -819,8 +821,8 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
                       "gdbarch_dump: frame_align = <0x%lx>\n",
                       (long) gdbarch->frame_align);
   fprintf_unfiltered (file,
-                      "gdbarch_dump: frame_args_skip = 0x%s\n",
-                      paddr_nz (gdbarch->frame_args_skip));
+                      "gdbarch_dump: frame_args_skip = %s\n",
+                      core_addr_to_string_nz (gdbarch->frame_args_skip));
   fprintf_unfiltered (file,
                       "gdbarch_dump: gdbarch_frame_num_args_p() = %d\n",
                       gdbarch_frame_num_args_p (gdbarch));
@@ -829,7 +831,7 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
                       (long) gdbarch->frame_num_args);
   fprintf_unfiltered (file,
                       "gdbarch_dump: frame_red_zone_size = %s\n",
-                      paddr_d (gdbarch->frame_red_zone_size));
+                      plongest (gdbarch->frame_red_zone_size));
   fprintf_unfiltered (file,
                       "gdbarch_dump: gdbarch_get_longjmp_target_p() = %d\n",
                       gdbarch_get_longjmp_target_p (gdbarch));
@@ -838,7 +840,7 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
                       (long) gdbarch->get_longjmp_target);
   fprintf_unfiltered (file,
                       "gdbarch_dump: have_nonsteppable_watchpoint = %s\n",
-                      paddr_d (gdbarch->have_nonsteppable_watchpoint));
+                      plongest (gdbarch->have_nonsteppable_watchpoint));
   fprintf_unfiltered (file,
                       "gdbarch_dump: in_function_epilogue_p = <0x%lx>\n",
                       (long) gdbarch->in_function_epilogue_p);
@@ -850,7 +852,7 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
                       (long) gdbarch->inner_than);
   fprintf_unfiltered (file,
                       "gdbarch_dump: int_bit = %s\n",
-                      paddr_d (gdbarch->int_bit));
+                      plongest (gdbarch->int_bit));
   fprintf_unfiltered (file,
                       "gdbarch_dump: gdbarch_integer_to_address_p() = %d\n",
                       gdbarch_integer_to_address_p (gdbarch));
@@ -859,22 +861,22 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
                       (long) gdbarch->integer_to_address);
   fprintf_unfiltered (file,
                       "gdbarch_dump: long_bit = %s\n",
-                      paddr_d (gdbarch->long_bit));
+                      plongest (gdbarch->long_bit));
   fprintf_unfiltered (file,
                       "gdbarch_dump: long_double_bit = %s\n",
-                      paddr_d (gdbarch->long_double_bit));
+                      plongest (gdbarch->long_double_bit));
   fprintf_unfiltered (file,
                       "gdbarch_dump: long_double_format = %s\n",
                       pformat (gdbarch->long_double_format));
   fprintf_unfiltered (file,
                       "gdbarch_dump: long_long_bit = %s\n",
-                      paddr_d (gdbarch->long_long_bit));
+                      plongest (gdbarch->long_long_bit));
   fprintf_unfiltered (file,
                       "gdbarch_dump: gdbarch_max_insn_length_p() = %d\n",
                       gdbarch_max_insn_length_p (gdbarch));
   fprintf_unfiltered (file,
                       "gdbarch_dump: max_insn_length = %s\n",
-                      paddr_d (gdbarch->max_insn_length));
+                      plongest (gdbarch->max_insn_length));
   fprintf_unfiltered (file,
                       "gdbarch_dump: memory_insert_breakpoint = <0x%lx>\n",
                       (long) gdbarch->memory_insert_breakpoint);
@@ -886,13 +888,13 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
                       gdbarch->name_of_malloc);
   fprintf_unfiltered (file,
                       "gdbarch_dump: num_pseudo_regs = %s\n",
-                      paddr_d (gdbarch->num_pseudo_regs));
+                      plongest (gdbarch->num_pseudo_regs));
   fprintf_unfiltered (file,
                       "gdbarch_dump: num_regs = %s\n",
-                      paddr_d (gdbarch->num_regs));
+                      plongest (gdbarch->num_regs));
   fprintf_unfiltered (file,
                       "gdbarch_dump: osabi = %s\n",
-                      paddr_d (gdbarch->osabi));
+                      plongest (gdbarch->osabi));
   fprintf_unfiltered (file,
                       "gdbarch_dump: gdbarch_overlay_update_p() = %d\n",
                       gdbarch_overlay_update_p (gdbarch));
@@ -901,7 +903,7 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
                       (long) gdbarch->overlay_update);
   fprintf_unfiltered (file,
                       "gdbarch_dump: pc_regnum = %s\n",
-                      paddr_d (gdbarch->pc_regnum));
+                      plongest (gdbarch->pc_regnum));
   fprintf_unfiltered (file,
                       "gdbarch_dump: pointer_to_address = <0x%lx>\n",
                       (long) gdbarch->pointer_to_address);
@@ -925,7 +927,7 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
                       (long) gdbarch->print_vector_info);
   fprintf_unfiltered (file,
                       "gdbarch_dump: ps_regnum = %s\n",
-                      paddr_d (gdbarch->ps_regnum));
+                      plongest (gdbarch->ps_regnum));
   fprintf_unfiltered (file,
                       "gdbarch_dump: gdbarch_pseudo_register_read_p() = %d\n",
                       gdbarch_pseudo_register_read_p (gdbarch));
@@ -940,7 +942,7 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
                       (long) gdbarch->pseudo_register_write);
   fprintf_unfiltered (file,
                       "gdbarch_dump: ptr_bit = %s\n",
-                      paddr_d (gdbarch->ptr_bit));
+                      plongest (gdbarch->ptr_bit));
   fprintf_unfiltered (file,
                       "gdbarch_dump: gdbarch_push_dummy_call_p() = %d\n",
                       gdbarch_push_dummy_call_p (gdbarch));
@@ -1012,7 +1014,7 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
                       (long) gdbarch->sdb_reg_to_regnum);
   fprintf_unfiltered (file,
                       "gdbarch_dump: short_bit = %s\n",
-                      paddr_d (gdbarch->short_bit));
+                      plongest (gdbarch->short_bit));
   fprintf_unfiltered (file,
                       "gdbarch_dump: gdbarch_single_step_through_delay_p() = %d\n",
                       gdbarch_single_step_through_delay_p (gdbarch));
@@ -1051,10 +1053,10 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
                       (long) gdbarch->software_single_step);
   fprintf_unfiltered (file,
                       "gdbarch_dump: sofun_address_maybe_missing = %s\n",
-                      paddr_d (gdbarch->sofun_address_maybe_missing));
+                      plongest (gdbarch->sofun_address_maybe_missing));
   fprintf_unfiltered (file,
                       "gdbarch_dump: sp_regnum = %s\n",
-                      paddr_d (gdbarch->sp_regnum));
+                      plongest (gdbarch->sp_regnum));
   fprintf_unfiltered (file,
                       "gdbarch_dump: stab_reg_to_regnum = <0x%lx>\n",
                       (long) gdbarch->stab_reg_to_regnum);
@@ -1069,7 +1071,7 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
                       (long) gdbarch->static_transform_name);
   fprintf_unfiltered (file,
                       "gdbarch_dump: target_desc = %s\n",
-                      paddr_d ((long) gdbarch->target_desc));
+                      plongest ((long) gdbarch->target_desc));
   fprintf_unfiltered (file,
                       "gdbarch_dump: target_signal_from_host = <0x%lx>\n",
                       (long) gdbarch->target_signal_from_host);
@@ -1096,13 +1098,13 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
                       (long) gdbarch->value_to_register);
   fprintf_unfiltered (file,
                       "gdbarch_dump: vbit_in_delta = %s\n",
-                      paddr_d (gdbarch->vbit_in_delta));
+                      plongest (gdbarch->vbit_in_delta));
   fprintf_unfiltered (file,
                       "gdbarch_dump: virtual_frame_pointer = <0x%lx>\n",
                       (long) gdbarch->virtual_frame_pointer);
   fprintf_unfiltered (file,
                       "gdbarch_dump: vtable_function_descriptors = %s\n",
-                      paddr_d (gdbarch->vtable_function_descriptors));
+                      plongest (gdbarch->vtable_function_descriptors));
   fprintf_unfiltered (file,
                       "gdbarch_dump: gdbarch_write_pc_p() = %d\n",
                       gdbarch_write_pc_p (gdbarch));
@@ -2519,7 +2521,7 @@ gdbarch_addr_bits_remove (struct gdbarch *gdbarch, CORE_ADDR addr)
   gdb_assert (gdbarch->addr_bits_remove != NULL);
   if (gdbarch_debug >= 2)
     fprintf_unfiltered (gdb_stdlog, "gdbarch_addr_bits_remove called\n");
-  return gdbarch->addr_bits_remove (addr);
+  return gdbarch->addr_bits_remove (gdbarch, addr);
 }
 
 void
@@ -2536,7 +2538,7 @@ gdbarch_smash_text_address (struct gdbarch *gdbarch, CORE_ADDR addr)
   gdb_assert (gdbarch->smash_text_address != NULL);
   if (gdbarch_debug >= 2)
     fprintf_unfiltered (gdb_stdlog, "gdbarch_smash_text_address called\n");
-  return gdbarch->smash_text_address (addr);
+  return gdbarch->smash_text_address (gdbarch, addr);
 }
 
 void
@@ -3746,8 +3748,9 @@ deprecated_current_gdbarch_select_hack (struct gdbarch *new_gdbarch)
   gdb_assert (current_gdbarch != NULL);
   gdb_assert (new_gdbarch->initialized_p);
   current_gdbarch = new_gdbarch;
+  target_gdbarch = new_gdbarch;
   observer_notify_architecture_changed (new_gdbarch);
-  reinit_frame_cache ();
+  registers_changed ();
 }
 
 extern void _initialize_gdbarch (void);

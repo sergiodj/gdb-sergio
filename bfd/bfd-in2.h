@@ -4369,6 +4369,15 @@ internally by the linker after analysis of a
 BFD_RELOC_XTENSA_ASM_EXPAND.  */
   BFD_RELOC_XTENSA_ASM_SIMPLIFY,
 
+/* Xtensa TLS relocations.  */
+  BFD_RELOC_XTENSA_TLSDESC_FN,
+  BFD_RELOC_XTENSA_TLSDESC_ARG,
+  BFD_RELOC_XTENSA_TLS_DTPOFF,
+  BFD_RELOC_XTENSA_TLS_TPOFF,
+  BFD_RELOC_XTENSA_TLS_FUNC,
+  BFD_RELOC_XTENSA_TLS_ARG,
+  BFD_RELOC_XTENSA_TLS_CALL,
+
 /* 8 bit signed offset in (ix+d) or (iy+d).  */
   BFD_RELOC_Z80_DISP8,
 
@@ -4712,7 +4721,8 @@ struct bfd
   /* Used for input and output.  */
   unsigned int symcount;
 
-  /* Symbol table for output BFD (with symcount entries).  */
+  /* Symbol table for output BFD (with symcount entries).
+     Also used by the linker to cache input BFD symbols.  */
   struct bfd_symbol  **outsymbols;
 
   /* Used for slurped dynamic symbol tables.  */

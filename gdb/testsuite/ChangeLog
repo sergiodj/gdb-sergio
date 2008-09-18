@@ -1,3 +1,122 @@
+2008-09-09  Pedro Alves  <pedro@codesourcery.com>
+
+	* gdb.base/hook-stop-continue.c: New.
+	* gdb.base/hook-stop-continue.exp: New.
+
+2008-09-08  Daniel Jacobowitz  <dan@codesourcery.com>
+
+	* gdb.base/structs3.c, gdb.base/structs3.exp: New files.
+
+2008-09-08  Jerome Guitton  <guitton@adacore.com>
+
+	* gdb.arch/powerpc-aix-prologue.c (stack_check_probe_1)
+	(stack_check_probe_2, stack_check_probe_loop_1)
+	(stack_check_probe_loop_2): New functions.
+	(main): Add call to these new functions.
+	* gdb.arch/powerpc-aix-prologue.exp: When breaking on these
+	functions, check that the breakpoint is inserted at the appropriate
+	location.
+	(insert_breakpoint): Slightly refine this procedure so that it can
+	be called several times in the test.
+
+2008-09-08  Jerome Guitton  <guitton@adacore.com>
+
+	* gdb.base/stack-checking.c: New file.
+	* gdb.base/stack-checking.exp: New file.
+
+2008-09-05  Thiago Jung Bauermann  <bauerman@br.ibm.com>
+
+	* gdb.arch/altivec-abi.exp: Remove extra verbose call.
+	* gdb.arch/altivec-regs.exp: Likewise.
+	* gdb.arch/vsx-regs.exp: Likewise.
+
+2008-09-05  Thiago Jung Bauermann  <bauerman@br.ibm.com>
+
+	* gdb.arch/ppc-fp.exp: New file.
+	* gdb.arch/ppc-fp.c: New file.
+
+2008-09-05  Paul Pluzhnikov  <ppluzhnikov@google.com>
+
+	*gdb.base/mips_pro.exp: compile with gcc -fno-inline,
+	lest gcc-4.3.1 optimizes the whole thing away.
+	
+2008-09-04  Michael Snyder  <msnyder@vmware.com>
+
+	* lib/gdb.exp (gdb_continue_to_breakpoint): Accept "in" as well
+	as "at" (for non-debug functions such as _start).
+
+2008-09-03  Ulrich Weigand  <Ulrich.Weigand@de.ibm.com>
+
+	* gdb.base/value-double-free.exp: Respect gdb,no_hardware_watchpoints.
+	* gdb.base/watchpoint-solib.exp: Likewise.  Update tests to handle
+	software watchpoints.
+	* gdb.base/watch_thread_num.exp: Likewise.
+
+2008-09-03  Aleksandar Ristovski  <aristovski@qnx.com>
+
+	* gdb.arch/i386-bp_permanent.exp: New test.
+
+2008-08-24  Tom Tromey  <tromey@redhat.com>
+
+	* gdb.base/maint.exp: Update "maint print type".
+
+2008-08-21  Vladimir Prus  <vladimir@codesourcery.com>
+
+	* gdb.mi/mi-nonstop.exp: Fix the check for non-stop
+	support.  Adjust the order of "*running" notifications.
+	* gdb.mi/non-stop.c: Don't cast from int to void* and
+	back.
+
+2008-08-20  Mark Kettenis  <kettenis@gnu.org>
+
+	* gdb.arch/powerpc-prologue.exp: Code doesn't save %r31 so don't
+	expect to find it in the "info frame" output.
+
+2008-08-20  Daniel Jacobowitz  <dan@codesourcery.com>
+
+	* gdb.base/interp.exp: Always consume both prompts.
+
+2008-08-20  Pedro Alves  <pedro@codesourcery.com>
+
+	* gdb.base/pending.exp: Test pending breakpoints without symbols
+	loaded.
+
+2008-08-19  Vladimir Prus  <vladimir@codesourcery.com>
+
+	* lib/mi-support.exp (mi_expect_stop): Produce
+	more details on failures.
+	* gdb.mi/mi-nonstop.exp: New.
+	* gdb.mi/non-stop.c: New.
+
+2008-08-19  Vladimir Prus  <vladimir@codesourcery.com>
+
+        * gdb.mi/mi-async.exp: Use 'set target-async'.
+        * lib/mi-support.exp: Use 'set/show target-async'.
+
+2008-08-18  Daniel Jacobowitz  <dan@codesourcery.com>
+
+	* gdb.arch/powerpc-prologue.exp: Correct saved registers.
+
+2008-08-17  Tom Tromey  <tromey@redhat.com>
+
+	* gdb.base/help.exp (help catch): Rewrite.
+
+2008-08-16  Thiago Jung Bauermann  <bauerman@br.ibm.com>
+
+	* gdb.base/define.exp: Test indented command documentation.
+	* gdb.python/python.exp: Test indented multi-line command.
+
+2008-08-15  Luis Machado  <luisgpm@br.ibm.com>
+
+	* testsuite/gdb.arch/vsx-regs.c: New source file.
+	* testsuite/gdb.arch/vsx-regs.exp: New testcase.
+	* testsuite/lib/gdb.exp (skip_vsx_tests): New function.
+
+2008-08-14  Tom Tromey  <tromey@redhat.com>
+
+	* gdb.base/macscp.exp: Add regression test for "macro define" or
+	"macro undef" with no arguments.
+
 2008-08-08  Paul Pluzhnikov  <ppluzhnikov@google.com>
 
 	* gdb.base/args.exp: Prevent ~/.gdbinit from affecting test.

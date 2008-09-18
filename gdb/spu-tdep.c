@@ -78,7 +78,7 @@ spu_builtin_type_vec128 (struct gdbarch *gdbarch)
       append_composite_type_field (t, "v4_float",
 				   init_vector_type (builtin_type_float, 4));
 
-      TYPE_FLAGS (t) |= TYPE_FLAG_VECTOR;
+      TYPE_VECTOR (t) = 1;
       TYPE_NAME (t) = "spu_builtin_type_vec128";
 
       tdep->spu_builtin_type_vec128 = t;
@@ -910,6 +910,10 @@ spu_frame_unwind_cache (struct frame_info *this_frame,
 	}
     }
 
+  /* If we didn't find a frame, we cannot determine SP / return address.  */
+  if (info->frame_base == 0)
+    return info;
+
   /* The previous SP is equal to the CFA.  */
   trad_frame_set_value (info->saved_regs, SPU_SP_REGNUM, info->frame_base);
 
@@ -1028,6 +1032,22 @@ spu_frame_align (struct gdbarch *gdbarch, CORE_ADDR sp)
   return sp & ~15;
 }
 
+static CORE_ADDR
+spu_push_dummy_code (struct gdbarch *gdbarch, CORE_ADDR sp, CORE_ADDR funaddr,
+		     struct value **args, int nargs, struct type *value_type,
+		     CORE_ADDR *real_pc, CORE_ADDR *bp_addr,
+		     struct regcache *regcache)
+{
+  /* Allocate space sufficient for a breakpoint, keeping the stack aligned.  */
+  sp = (sp - 4) & ~15;
+  /* Store the address of that breakpoint */
+  *bp_addr = sp;
+  /* The call starts at the callee's entry point.  */
+  *real_pc = funaddr;
+
+  return sp;
+}
+
 static int
 spu_scalar_value_p (struct type *type)
 {
@@ -1103,6 +1123,7 @@ spu_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
 		     int nargs, struct value **args, CORE_ADDR sp,
 		     int struct_return, CORE_ADDR struct_addr)
 {
+  CORE_ADDR sp_delta;
   int i;
   int regnum = SPU_ARG1_REGNUM;
   int stack_arg = -1;
@@ -1182,8 +1203,14 @@ spu_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
   regcache_cooked_read (regcache, SPU_RAW_SP_REGNUM, buf);
   target_write_memory (sp, buf, 16);
 
-  /* Finally, update the SP register.  */
-  regcache_cooked_write_unsigned (regcache, SPU_SP_REGNUM, sp);
+  /* Finally, update all slots of the SP register.  */
+  sp_delta = sp - extract_unsigned_integer (buf, 4);
+  for (i = 0; i < 4; i++)
+    {
+      CORE_ADDR sp_slot = extract_unsigned_integer (buf + 4*i, 4);
+      store_unsigned_integer (buf + 4*i, 4, sp_slot + sp_delta);
+    }
+  regcache_cooked_write (regcache, SPU_RAW_SP_REGNUM, buf);
 
   return sp;
 }
@@ -1444,7 +1471,7 @@ spu_overlay_update (struct obj_section *osect)
       struct objfile *objfile;
 
       ALL_OBJSECTIONS (objfile, osect)
-	if (section_is_overlay (osect->the_bfd_section))
+	if (section_is_overlay (osect))
 	  spu_overlay_update_osect (osect);
     }
 }
@@ -1461,6 +1488,10 @@ spu_overlay_new_objfile (struct objfile *objfile)
 
   /* If we've already touched this file, do nothing.  */
   if (!objfile || objfile_data (objfile, spu_overlay_data) != NULL)
+    return;
+
+  /* Consider only SPU objfiles.  */
+  if (bfd_get_arch (objfile->obfd) != bfd_arch_spu)
     return;
 
   /* Check if this objfile has overlays.  */
@@ -1496,6 +1527,9 @@ info_spu_event_command (char *args, int from_tty)
   char annex[32];
   LONGEST len;
   int rc, id;
+
+  if (gdbarch_bfd_arch_info (get_frame_arch (frame))->arch != bfd_arch_spu)
+    error (_("\"info spu\" is only supported on the SPU architecture."));
 
   id = get_frame_register_unsigned (frame, SPU_ID_REGNUM);
 
@@ -1548,6 +1582,9 @@ info_spu_signal_command (char *args, int from_tty)
   gdb_byte buf[100];
   LONGEST len;
   int rc, id;
+
+  if (gdbarch_bfd_arch_info (get_frame_arch (frame))->arch != bfd_arch_spu)
+    error (_("\"info spu\" is only supported on the SPU architecture."));
 
   id = get_frame_register_unsigned (frame, SPU_ID_REGNUM);
 
@@ -1664,6 +1701,9 @@ info_spu_mailbox_command (char *args, int from_tty)
   gdb_byte buf[1024];
   LONGEST len;
   int i, id;
+
+  if (gdbarch_bfd_arch_info (get_frame_arch (frame))->arch != bfd_arch_spu)
+    error (_("\"info spu\" is only supported on the SPU architecture."));
 
   id = get_frame_register_unsigned (frame, SPU_ID_REGNUM);
 
@@ -1894,6 +1934,9 @@ info_spu_dma_command (char *args, int from_tty)
   LONGEST len;
   int i, id;
 
+  if (gdbarch_bfd_arch_info (get_frame_arch (frame))->arch != bfd_arch_spu)
+    error (_("\"info spu\" is only supported on the SPU architecture."));
+
   id = get_frame_register_unsigned (frame, SPU_ID_REGNUM);
 
   xsnprintf (annex, sizeof annex, "%d/dma_info", id);
@@ -1925,15 +1968,15 @@ info_spu_dma_command (char *args, int from_tty)
     }
   else
     {
-      const char *query_msg;
+      const char *query_msg = _("no query pending");
 
-      switch (dma_info_type)
-	{
-	case 0: query_msg = _("no query pending"); break;
-	case 1: query_msg = _("'any' query pending"); break;
-	case 2: query_msg = _("'all' query pending"); break;
-	default: query_msg = _("undefined query type"); break;
-	}
+      if (dma_info_type & 4)
+	switch (dma_info_type & 3)
+	  {
+	    case 1: query_msg = _("'any' query pending"); break;
+	    case 2: query_msg = _("'all' query pending"); break;
+	    default: query_msg = _("undefined query type"); break;
+	  }
 
       printf_filtered (_("Tag-Group Status  0x%s\n"),
 		       phex (dma_info_status, 4));
@@ -1963,6 +2006,9 @@ info_spu_proxydma_command (char *args, int from_tty)
   LONGEST len;
   int i, id;
 
+  if (gdbarch_bfd_arch_info (get_frame_arch (frame))->arch != bfd_arch_spu)
+    error (_("\"info spu\" is only supported on the SPU architecture."));
+
   id = get_frame_register_unsigned (frame, SPU_ID_REGNUM);
 
   xsnprintf (annex, sizeof annex, "%d/proxydma_info", id);
@@ -1990,7 +2036,7 @@ info_spu_proxydma_command (char *args, int from_tty)
     {
       const char *query_msg;
 
-      switch (dma_info_type)
+      switch (dma_info_type & 3)
 	{
 	case 0: query_msg = _("no query pending"); break;
 	case 1: query_msg = _("'any' query pending"); break;
@@ -2078,6 +2124,7 @@ spu_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
   set_gdbarch_call_dummy_location (gdbarch, ON_STACK);
   set_gdbarch_frame_align (gdbarch, spu_frame_align);
   set_gdbarch_frame_red_zone_size (gdbarch, 2000);
+  set_gdbarch_push_dummy_code (gdbarch, spu_push_dummy_code);
   set_gdbarch_push_dummy_call (gdbarch, spu_push_dummy_call);
   set_gdbarch_dummy_id (gdbarch, spu_dummy_id);
   set_gdbarch_return_value (gdbarch, spu_return_value);

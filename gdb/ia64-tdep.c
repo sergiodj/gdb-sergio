@@ -2396,7 +2396,7 @@ get_kernel_table (unw_word_t ip, unw_dyn_info_t *di)
 			"segbase=0x%s, length=%s, gp=0x%s\n",
 			(char *) di->u.ti.name_ptr, 
 			paddr_nz (di->u.ti.segbase), 
-			paddr_u (di->u.ti.table_len), 
+			pulongest (di->u.ti.table_len), 
 			paddr_nz (di->gp));
   return 0;
 }
@@ -2505,7 +2505,7 @@ ia64_find_proc_info_x (unw_addr_space_t as, unw_word_t ip, unw_proc_info_t *pi,
 			    paddr_nz (di.u.ti.segbase), 
 			    paddr_nz (di.start_ip), paddr_nz (di.end_ip),
 			    paddr_nz (di.gp), 
-			    paddr_u (di.u.ti.table_len), 
+			    pulongest (di.u.ti.table_len), 
 			    paddr_nz ((CORE_ADDR)di.u.ti.table_data));
     }
   else
@@ -2522,7 +2522,7 @@ ia64_find_proc_info_x (unw_addr_space_t as, unw_word_t ip, unw_proc_info_t *pi,
 			    paddr_nz (di.u.rti.segbase), 
 			    paddr_nz (di.start_ip), paddr_nz (di.end_ip),
 			    paddr_nz (di.gp), 
-			    paddr_u (di.u.rti.table_len), 
+			    pulongest (di.u.rti.table_len), 
 			    paddr_nz (di.u.rti.table_data));
     }
 
@@ -2563,7 +2563,7 @@ ia64_get_dyn_info_list (unw_addr_space_t as,
       void *buf = NULL;
 
       text_sec = objfile->sections + SECT_OFF_TEXT (objfile);
-      ip = text_sec->addr;
+      ip = obj_section_addr (text_sec);
       ret = ia64_find_unwind_table (objfile, ip, &di, &buf);
       if (ret >= 0)
 	{
@@ -3095,10 +3095,12 @@ ia64_find_global_pointer (CORE_ADDR faddr)
 
       if (osect < faddr_sect->objfile->sections_end)
 	{
-	  CORE_ADDR addr;
+	  CORE_ADDR addr, endaddr;
 
-	  addr = osect->addr;
-	  while (addr < osect->endaddr)
+	  addr = obj_section_addr (osect);
+	  endaddr = obj_section_endaddr (osect);
+
+	  while (addr < endaddr)
 	    {
 	      int status;
 	      LONGEST tag;
@@ -3156,10 +3158,12 @@ find_extant_func_descr (CORE_ADDR faddr)
 
       if (osect < faddr_sect->objfile->sections_end)
 	{
-	  CORE_ADDR addr;
+	  CORE_ADDR addr, endaddr;
 
-	  addr = osect->addr;
-	  while (addr < osect->endaddr)
+	  addr = obj_section_addr (osect);
+	  endaddr = obj_section_endaddr (osect);
+
+	  while (addr < endaddr)
 	    {
 	      int status;
 	      LONGEST faddr2;

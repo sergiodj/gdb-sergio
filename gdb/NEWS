@@ -3,6 +3,11 @@
 
 *** Changes since GDB 6.8
 
+* GDB now supports automatic retrieval of shared library files from
+remote targets.  To use this feature, specify a system root that begins
+with the `remote:' prefix, either via the `set sysroot' command or via
+the `--with-sysroot' configure-time option.
+
 * Commands `set debug-file-directory', `set solib-search-path' and `set args'
 now complete on file names.
 
@@ -21,6 +26,11 @@ completions will be "f1" and "f2".
 
 qSearch:memory:
   Search memory for a sequence of bytes.
+
+QStartNoAckMode
+  Turn off `+'/`-' protocol acknowledgments to permit more efficient
+  operation over reliable transport links.  Use of this packet is
+  controlled by the `set remote noack-packet' command.
 
 * Removed remote protocol undocumented extension
 
@@ -53,6 +63,10 @@ list of section offsets.
 conditions handling signals delivered during attach or thread creation
 have also been fixed.
 
+* GDB now supports the use of DWARF boolean types for Ada's type Boolean.
+From the user's standpoint, all unqualified instances of True and False
+are treated as the standard definitions, regardless of context.
+
 * New features in the GDB remote stub, gdbserver
 
   - The "--wrapper" command-line argument tells gdbserver to use a
@@ -61,6 +75,9 @@ have also been fixed.
   - On PowerPC and S/390 targets, it is now possible to use a single
   gdbserver executable to debug both 32-bit and 64-bit programs.
   (This requires gdbserver itself to be built as a 64-bit executable.)
+
+  - gdbserver uses the new noack protocol mode for TCP connections to
+  reduce communications latency, if also supported and enabled in GDB.
 
 * Python scripting
 
@@ -120,15 +137,21 @@ show disable-randomization
   by default on some platforms.  This option keeps the addresses stable across
   multiple debugging sessions.
 
-* New targets
-
-x86 DICOS			i[34567]86-*-dicos*
+set target-async
+  Requests that asynchronous execution is enabled in the target, if available.
+  In this case, it's possible to resume target in the background, and interact
+  with GDB while the target is running.  "show target-async" displays the
+  current state of asynchronous execution of the target.
 
 macro define
 macro list
 macro undef
   These allow macros to be defined, undefined, and listed
   interactively.
+
+* New targets
+
+x86 DICOS			i[34567]86-*-dicos*
 
 *** Changes in GDB 6.8
 

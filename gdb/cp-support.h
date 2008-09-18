@@ -64,6 +64,8 @@ extern unsigned int cp_entire_prefix_len (const char *name);
 
 extern char *cp_func_name (const char *full_name);
 
+extern char *cp_remove_params (const char *demangled_name);
+
 extern struct symbol **make_symbol_overload_list (const char *,
 						  const char *);
 
@@ -71,10 +73,6 @@ extern struct type *cp_lookup_rtti_type (const char *name,
 					 struct block *block);
 
 /* Functions/variables from cp-namespace.c.  */
-
-extern unsigned char processing_has_namespace_info;
-
-extern const char *processing_current_prefix;
 
 extern int cp_is_anonymous (const char *namespace);
 
@@ -89,7 +87,9 @@ extern void cp_finalize_namespace (struct block *static_block,
 
 extern void cp_set_block_scope (const struct symbol *symbol,
 				struct block *block,
-				struct obstack *obstack);
+				struct obstack *obstack,
+				const char *processing_current_prefix,
+				int processing_has_namespace_info);
 
 extern void cp_scan_for_anonymous_namespaces (const struct symbol *symbol);
 

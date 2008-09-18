@@ -146,7 +146,7 @@ core_addr_greaterthan (CORE_ADDR lhs, CORE_ADDR rhs)
 /* Misc helper functions for targets. */
 
 CORE_ADDR
-core_addr_identity (CORE_ADDR addr)
+core_addr_identity (struct gdbarch *gdbarch, CORE_ADDR addr)
 {
   return addr;
 }
@@ -491,7 +491,7 @@ gdbarch_update_p (struct gdbarch_info info)
 
   /* If it is the same old architecture, accept the request (but don't
      swap anything).  */
-  if (new_gdbarch == current_gdbarch)
+  if (new_gdbarch == target_gdbarch)
     {
       if (gdbarch_debug)
 	fprintf_unfiltered (gdb_stdlog, "gdbarch_update_p: "

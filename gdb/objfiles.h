@@ -110,34 +110,11 @@ struct entry_info
 
   };
 
-/* Sections in an objfile.
-
-   It is strange that we have both this notion of "sections"
-   and the one used by section_offsets.  Section as used
-   here, (currently at least) means a BFD section, and the sections
-   are set up from the BFD sections in allocate_objfile.
-
-   The sections in section_offsets have their meaning determined by
-   the symbol format, and they are set up by the sym_offsets function
-   for that symbol file format.
-
-   I'm not sure this could or should be changed, however.  */
+/* Sections in an objfile.  The section offsets are stored in the
+   OBJFILE.  */
 
 struct obj_section
   {
-    CORE_ADDR addr;		/* lowest address in section */
-    CORE_ADDR endaddr;		/* 1+highest address in section */
-
-    /* This field is being used for nefarious purposes by syms_from_objfile.
-       It is said to be redundant with section_offsets; it's not really being
-       used that way, however, it's some sort of hack I don't understand
-       and am not going to try to eliminate (yet, anyway).  FIXME.
-
-       It was documented as "offset between (end)addr and actual memory
-       addresses", but that's not true; addr & endaddr are actual memory
-       addresses.  */
-    CORE_ADDR offset;
-
     struct bfd_section *the_bfd_section;	/* BFD section pointer */
 
     /* Objfile this section is part of.  */
@@ -147,6 +124,21 @@ struct obj_section
     int ovly_mapped;
   };
 
+/* Relocation offset applied to S.  */
+#define obj_section_offset(s)						\
+  (((s)->objfile->section_offsets)->offsets[(s)->the_bfd_section->index])
+
+/* The memory address of section S (vma + offset).  */
+#define obj_section_addr(s)				      		\
+  (bfd_get_section_vma ((s)->objfile->abfd, s->the_bfd_section)		\
+   + obj_section_offset (s))
+
+/* The one-passed-the-end memory address of section S
+   (vma + size + offset).  */
+#define obj_section_endaddr(s)						\
+  (bfd_get_section_vma ((s)->objfile->abfd, s->the_bfd_section)		\
+   + bfd_get_section_size ((s)->the_bfd_section)			\
+   + obj_section_offset (s))
 
 /* The "objstats" structure provides a place for gdb to record some
    interesting information about its internal state at runtime, on a
@@ -293,18 +285,6 @@ struct objfile
 
     struct minimal_symbol *msymbol_demangled_hash[MINIMAL_SYMBOL_HASH_SIZE];
 
-    /* The mmalloc() malloc-descriptor for this objfile if we are using
-       the memory mapped malloc() package to manage storage for this objfile's
-       data.  NULL if we are not. */
-
-    void *md;
-
-    /* The file descriptor that was used to obtain the mmalloc descriptor
-       for this objfile.  If we call mmalloc_detach with the malloc descriptor
-       we should then close this file descriptor. */
-
-    int mmfd;
-
     /* Structure which keeps track of functions that manipulate objfile's
        of the same type as this objfile.  I.E. the function to read partial
        symbols for example.  Note that this structure is in statically
@@ -338,17 +318,10 @@ struct objfile
 
     void *deprecated_sym_private;
 
-    /* Hook for target-architecture-specific information.  This must
-       point to memory allocated on one of the obstacks in this objfile,
-       so that it gets freed automatically when reading a new object
-       file. */
-
-    void *deprecated_obj_private;
-
     /* Per objfile data-pointers required by other GDB modules.  */
     /* FIXME: kettenis/20030711: This mechanism could replace
-       deprecated_sym_stab_info, deprecated_sym_private and
-       deprecated_obj_private entirely.  */
+       deprecated_sym_stab_info and deprecated_sym_private
+       entirely.  */
 
     void **data;
     unsigned num_data;
@@ -525,9 +498,6 @@ extern int have_minimal_symbols (void);
 
 extern struct obj_section *find_pc_section (CORE_ADDR pc);
 
-extern struct obj_section *find_pc_sect_section (CORE_ADDR pc,
-						 asection * section);
-
 extern int in_plt_section (CORE_ADDR, char *);
 
 /* Keep a registry of per-objfile data-pointers required by other GDB
@@ -567,7 +537,7 @@ extern void *objfile_data (struct objfile *objfile,
 /* Traverse all minimal symbols in one objfile.  */
 
 #define	ALL_OBJFILE_MSYMBOLS(objfile, m) \
-    for ((m) = (objfile) -> msymbols; DEPRECATED_SYMBOL_NAME(m) != NULL; (m)++)
+    for ((m) = (objfile) -> msymbols; SYMBOL_LINKAGE_NAME(m) != NULL; (m)++)
 
 /* Traverse all symtabs in all objfiles.  */
 

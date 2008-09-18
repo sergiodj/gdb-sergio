@@ -590,7 +590,7 @@ build_address_symbolic (CORE_ADDR addr,  /* IN */
   struct minimal_symbol *msymbol;
   struct symbol *symbol;
   CORE_ADDR name_location = 0;
-  asection *section = 0;
+  struct obj_section *section = NULL;
   char *name_temp = "";
   
   /* Let's say it is unmapped.  */
@@ -626,7 +626,7 @@ build_address_symbolic (CORE_ADDR addr,  /* IN */
       if (do_demangle || asm_demangle)
 	name_temp = SYMBOL_PRINT_NAME (symbol);
       else
-	name_temp = DEPRECATED_SYMBOL_NAME (symbol);
+	name_temp = SYMBOL_LINKAGE_NAME (symbol);
     }
 
   if (msymbol != NULL)
@@ -640,7 +640,7 @@ build_address_symbolic (CORE_ADDR addr,  /* IN */
 	  if (do_demangle || asm_demangle)
 	    name_temp = SYMBOL_PRINT_NAME (msymbol);
 	  else
-	    name_temp = DEPRECATED_SYMBOL_NAME (msymbol);
+	    name_temp = SYMBOL_LINKAGE_NAME (msymbol);
 	}
     }
   if (symbol == NULL && msymbol == NULL)
@@ -976,7 +976,6 @@ sym_info (char *arg, int from_tty)
   struct minimal_symbol *msymbol;
   struct objfile *objfile;
   struct obj_section *osect;
-  asection *sect;
   CORE_ADDR addr, sect_addr;
   int matches = 0;
   unsigned int offset;
@@ -992,11 +991,11 @@ sym_info (char *arg, int from_tty)
     if (objfile->separate_debug_objfile_backlink)
       continue;
 
-    sect = osect->the_bfd_section;
-    sect_addr = overlay_mapped_address (addr, sect);
+    sect_addr = overlay_mapped_address (addr, osect);
 
-    if (osect->addr <= sect_addr && sect_addr < osect->endaddr &&
-	(msymbol = lookup_minimal_symbol_by_pc_section (sect_addr, sect)))
+    if (obj_section_addr (osect) <= sect_addr
+	&& sect_addr < obj_section_endaddr (osect)
+	&& (msymbol = lookup_minimal_symbol_by_pc_section (sect_addr, osect)))
       {
 	matches = 1;
 	offset = sect_addr - SYMBOL_VALUE_ADDRESS (msymbol);
@@ -1006,12 +1005,12 @@ sym_info (char *arg, int from_tty)
 	else
 	  printf_filtered ("%s in ",
 			   SYMBOL_PRINT_NAME (msymbol));
-	if (pc_in_unmapped_range (addr, sect))
+	if (pc_in_unmapped_range (addr, osect))
 	  printf_filtered (_("load address range of "));
-	if (section_is_overlay (sect))
+	if (section_is_overlay (osect))
 	  printf_filtered (_("%s overlay "),
-			   section_is_mapped (sect) ? "mapped" : "unmapped");
-	printf_filtered (_("section %s"), sect->name);
+			   section_is_mapped (osect) ? "mapped" : "unmapped");
+	printf_filtered (_("section %s"), osect->the_bfd_section->name);
 	printf_filtered ("\n");
       }
   }
@@ -1025,7 +1024,7 @@ address_info (char *exp, int from_tty)
   struct symbol *sym;
   struct minimal_symbol *msymbol;
   long val;
-  asection *section;
+  struct obj_section *section;
   CORE_ADDR load_addr;
   int is_a_field_of_this;	/* C++: lookup_symbol sets this to nonzero
 				   if exp is a field of `this'. */
@@ -1062,13 +1061,14 @@ address_info (char *exp, int from_tty)
 	  printf_filtered ("\" is at ");
 	  fputs_filtered (paddress (load_addr), gdb_stdout);
 	  printf_filtered (" in a file compiled without debugging");
-	  section = SYMBOL_BFD_SECTION (msymbol);
+	  section = SYMBOL_OBJ_SECTION (msymbol);
 	  if (section_is_overlay (section))
 	    {
 	      load_addr = overlay_unmapped_address (load_addr, section);
 	      printf_filtered (",\n -- loaded at ");
 	      fputs_filtered (paddress (load_addr), gdb_stdout);
-	      printf_filtered (" in overlay section %s", section->name);
+	      printf_filtered (" in overlay section %s",
+			       section->the_bfd_section->name);
 	    }
 	  printf_filtered (".\n");
 	}
@@ -1078,11 +1078,11 @@ address_info (char *exp, int from_tty)
     }
 
   printf_filtered ("Symbol \"");
-  fprintf_symbol_filtered (gdb_stdout, DEPRECATED_SYMBOL_NAME (sym),
+  fprintf_symbol_filtered (gdb_stdout, SYMBOL_PRINT_NAME (sym),
 			   current_language->la_language, DMGL_ANSI);
   printf_filtered ("\" is ");
   val = SYMBOL_VALUE (sym);
-  section = SYMBOL_BFD_SECTION (sym);
+  section = SYMBOL_OBJ_SECTION (sym);
 
   switch (SYMBOL_CLASS (sym))
     {
@@ -1100,7 +1100,8 @@ address_info (char *exp, int from_tty)
 	  load_addr = overlay_unmapped_address (load_addr, section);
 	  printf_filtered (",\n -- loaded at ");
 	  fputs_filtered (paddress (load_addr), gdb_stdout);
-	  printf_filtered (" in overlay section %s", section->name);
+	  printf_filtered (" in overlay section %s",
+			   section->the_bfd_section->name);
 	}
       break;
 
@@ -1131,7 +1132,8 @@ address_info (char *exp, int from_tty)
 	  load_addr = overlay_unmapped_address (load_addr, section);
 	  printf_filtered (_(",\n -- loaded at "));
 	  fputs_filtered (paddress (load_addr), gdb_stdout);
-	  printf_filtered (_(" in overlay section %s"), section->name);
+	  printf_filtered (_(" in overlay section %s"),
+			   section->the_bfd_section->name);
 	}
       break;
 
@@ -1165,7 +1167,8 @@ address_info (char *exp, int from_tty)
 	  load_addr = overlay_unmapped_address (load_addr, section);
 	  printf_filtered (_(",\n -- loaded at "));
 	  fputs_filtered (paddress (load_addr), gdb_stdout);
-	  printf_filtered (_(" in overlay section %s"), section->name);
+	  printf_filtered (_(" in overlay section %s"),
+			   section->the_bfd_section->name);
 	}
       break;
 
@@ -1173,12 +1176,12 @@ address_info (char *exp, int from_tty)
       {
 	struct minimal_symbol *msym;
 
-	msym = lookup_minimal_symbol (DEPRECATED_SYMBOL_NAME (sym), NULL, NULL);
+	msym = lookup_minimal_symbol (SYMBOL_LINKAGE_NAME (sym), NULL, NULL);
 	if (msym == NULL)
 	  printf_filtered ("unresolved");
 	else
 	  {
-	    section = SYMBOL_BFD_SECTION (msym);
+	    section = SYMBOL_OBJ_SECTION (msym);
 	    printf_filtered (_("static storage at address "));
 	    load_addr = SYMBOL_VALUE_ADDRESS (msym);
 	    fputs_filtered (paddress (load_addr), gdb_stdout);
@@ -1187,7 +1190,8 @@ address_info (char *exp, int from_tty)
 		load_addr = overlay_unmapped_address (load_addr, section);
 		printf_filtered (_(",\n -- loaded at "));
 		fputs_filtered (paddress (load_addr), gdb_stdout);
-		printf_filtered (_(" in overlay section %s"), section->name);
+		printf_filtered (_(" in overlay section %s"),
+				 section->the_bfd_section->name);
 	      }
 	  }
       }

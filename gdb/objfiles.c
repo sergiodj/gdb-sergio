@@ -88,14 +88,12 @@ add_to_objfile_sections (struct bfd *abfd, struct bfd_section *asect,
 
   if (0 == bfd_section_size (abfd, asect))
     return;
-  section.offset = 0;
   section.objfile = objfile;
   section.the_bfd_section = asect;
   section.ovly_mapped = 0;
-  section.addr = bfd_section_vma (abfd, asect);
-  section.endaddr = section.addr + bfd_section_size (abfd, asect);
   obstack_grow (&objfile->objfile_obstack, (char *) &section, sizeof (section));
-  objfile->sections_end = (struct obj_section *) (((unsigned long) objfile->sections_end) + 1);
+  objfile->sections_end
+    = (struct obj_section *) (((size_t) objfile->sections_end) + 1);
 }
 
 /* Builds a section table for OBJFILE.
@@ -124,10 +122,10 @@ build_objfile_section_table (struct objfile *objfile)
      waste some memory.  */
 
   objfile->sections_end = 0;
-  bfd_map_over_sections (objfile->obfd, add_to_objfile_sections, (char *) objfile);
-  objfile->sections = (struct obj_section *)
-    obstack_finish (&objfile->objfile_obstack);
-  objfile->sections_end = objfile->sections + (unsigned long) objfile->sections_end;
+  bfd_map_over_sections (objfile->obfd,
+			 add_to_objfile_sections, (void *) objfile);
+  objfile->sections = obstack_finish (&objfile->objfile_obstack);
+  objfile->sections_end = objfile->sections + (size_t) objfile->sections_end;
   return (0);
 }
 
@@ -163,7 +161,6 @@ allocate_objfile (bfd *abfd, int flags)
     {
       objfile = (struct objfile *) xmalloc (sizeof (struct objfile));
       memset (objfile, 0, sizeof (struct objfile));
-      objfile->md = NULL;
       objfile->psymbol_cache = bcache_xmalloc ();
       objfile->macro_cache = bcache_xmalloc ();
       /* We could use obstack_specify_allocation here instead, but
@@ -665,28 +662,13 @@ objfile_relocate (struct objfile *objfile, struct section_offsets *new_offsets)
         objfile->ei.entry_point += ANOFFSET (delta, SECT_OFF_TEXT (objfile));
     }
 
-  {
-    struct obj_section *s;
-    bfd *abfd;
-
-    abfd = objfile->obfd;
-
-    ALL_OBJFILE_OSECTIONS (objfile, s)
-      {
-      	int idx = s->the_bfd_section->index;
-	
-	s->addr += ANOFFSET (delta, idx);
-	s->endaddr += ANOFFSET (delta, idx);
-      }
-  }
-
   /* Update the table in exec_ops, used to read memory.  */
   ALL_OBJFILE_OSECTIONS (objfile, s)
     {
       int idx = s->the_bfd_section->index;
 
       exec_set_section_address (bfd_get_filename (objfile->obfd), idx,
-				s->addr);
+				obj_section_addr (s));
     }
 
   /* Relocate breakpoints as necessary, after things are relocated. */
@@ -772,33 +754,24 @@ have_minimal_symbols (void)
   return 0;
 }
 
-/* Returns a section whose range includes PC and SECTION, or NULL if
-   none found.  Note the distinction between the return type, struct
-   obj_section (which is defined in gdb), and the input type "struct
-   bfd_section" (which is a bfd-defined data type).  The obj_section
-   contains a pointer to the "struct bfd_section".  */
-
-struct obj_section *
-find_pc_sect_section (CORE_ADDR pc, struct bfd_section *section)
-{
-  struct obj_section *s;
-  struct objfile *objfile;
-
-  ALL_OBJSECTIONS (objfile, s)
-    if ((section == 0 || section == s->the_bfd_section) &&
-	s->addr <= pc && pc < s->endaddr)
-      return (s);
-
-  return (NULL);
-}
-
-/* Returns a section whose range includes PC or NULL if none found. 
-   Backward compatibility, no section.  */
+/* Returns a section whose range includes PC or NULL if none found.   */
 
 struct obj_section *
 find_pc_section (CORE_ADDR pc)
 {
-  return find_pc_sect_section (pc, find_pc_mapped_section (pc));
+  struct obj_section *s;
+  struct objfile *objfile;
+
+  /* Check for mapped overlay section first.  */
+  s = find_pc_mapped_section (pc);
+  if (s)
+    return s;
+
+  ALL_OBJSECTIONS (objfile, s)
+    if (obj_section_addr (s) <= pc && pc < obj_section_endaddr (s))
+      return s;
+
+  return NULL;
 }
 
 

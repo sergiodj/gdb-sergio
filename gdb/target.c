@@ -44,8 +44,6 @@
 
 static void target_info (char *, int);
 
-static void maybe_kill_then_attach (char *, int);
-
 static void kill_or_be_killed (int);
 
 static void default_terminal_info (char *, int);
@@ -358,21 +356,6 @@ kill_or_be_killed (int from_tty)
   tcomplain ();
 }
 
-static void
-maybe_kill_then_attach (char *args, int from_tty)
-{
-  kill_or_be_killed (from_tty);
-  target_attach (args, from_tty);
-}
-
-static void
-maybe_kill_then_create_inferior (char *exec, char *args, char **env,
-				 int from_tty)
-{
-  kill_or_be_killed (0);
-  target_create_inferior (exec, args, env, from_tty);
-}
-
 /* Go through the target stack from top to bottom, copying over zero
    entries in current_target, then filling in still empty entries.  In
    effect, we are doing class inheritance through the pushed target
@@ -402,8 +385,8 @@ update_current_target (void)
       INHERIT (to_shortname, t);
       INHERIT (to_longname, t);
       INHERIT (to_doc, t);
-      INHERIT (to_open, t);
-      INHERIT (to_close, t);
+      /* Do not inherit to_open.  */
+      /* Do not inherit to_close.  */
       INHERIT (to_attach, t);
       INHERIT (to_post_attach, t);
       INHERIT (to_attach_no_wait, t);
@@ -504,8 +487,6 @@ update_current_target (void)
   de_fault (to_close,
 	    (void (*) (int))
 	    target_ignore);
-  de_fault (to_attach,
-	    maybe_kill_then_attach);
   de_fault (to_post_attach,
 	    (void (*) (int))
 	    target_ignore);
@@ -588,8 +569,6 @@ update_current_target (void)
   de_fault (to_lookup_symbol,
 	    (int (*) (char *, CORE_ADDR *))
 	    nosymbol);
-  de_fault (to_create_inferior,
-	    maybe_kill_then_create_inferior);
   de_fault (to_post_startup_inferior,
 	    (void (*) (ptid_t))
 	    target_ignore);
@@ -655,12 +634,6 @@ update_current_target (void)
 	    tcomplain);
   de_fault (to_pid_to_exec_file,
 	    (char *(*) (int))
-	    return_zero);
-  de_fault (to_can_async_p,
-	    (int (*) (void))
-	    return_zero);
-  de_fault (to_is_async_p,
-	    (int (*) (void))
 	    return_zero);
   de_fault (to_async,
 	    (void (*) (void (*) (enum inferior_event_type, void*), void*))
@@ -827,7 +800,7 @@ unpush_target (struct target_ops *t)
 void
 pop_target (void)
 {
-  target_close (&current_target, 0);	/* Let it clean up */
+  target_close (target_stack, 0);	/* Let it clean up */
   if (unpush_target (target_stack) == 1)
     return;
 
@@ -835,6 +808,30 @@ pop_target (void)
 		      "pop_target couldn't find target %s\n",
 		      current_target.to_shortname);
   internal_error (__FILE__, __LINE__, _("failed internal consistency check"));
+}
+
+void
+pop_all_targets_above (enum strata above_stratum, int quitting)
+{
+  while ((int) (current_target.to_stratum) > (int) above_stratum)
+    {
+      target_close (target_stack, quitting);
+      if (!unpush_target (target_stack))
+	{
+	  fprintf_unfiltered (gdb_stderr,
+			      "pop_all_targets couldn't find target %s\n",
+			      target_stack->to_shortname);
+	  internal_error (__FILE__, __LINE__,
+			  _("failed internal consistency check"));
+	  break;
+	}
+    }
+}
+
+void
+pop_all_targets (int quitting)
+{
+  pop_all_targets_above (dummy_stratum, quitting);
 }
 
 /* Using the objfile specified in OBJFILE, find the address for the
@@ -845,7 +842,7 @@ target_translate_tls_address (struct objfile *objfile, CORE_ADDR offset)
   volatile CORE_ADDR addr = 0;
 
   if (target_get_thread_local_address_p ()
-      && gdbarch_fetch_tls_load_module_address_p (current_gdbarch))
+      && gdbarch_fetch_tls_load_module_address_p (target_gdbarch))
     {
       ptid_t ptid = inferior_ptid;
       volatile struct gdb_exception ex;
@@ -855,7 +852,7 @@ target_translate_tls_address (struct objfile *objfile, CORE_ADDR offset)
 	  CORE_ADDR lm_addr;
 	  
 	  /* Fetch the load module address for this objfile.  */
-	  lm_addr = gdbarch_fetch_tls_load_module_address (current_gdbarch,
+	  lm_addr = gdbarch_fetch_tls_load_module_address (target_gdbarch,
 	                                                   objfile);
 	  /* If it's 0, throw the appropriate exception.  */
 	  if (lm_addr == 0)
@@ -1045,7 +1042,7 @@ memory_xfer_partial (struct target_ops *ops, void *readbuf, const void *writebuf
   /* Likewise for accesses to unmapped overlay sections.  */
   if (readbuf != NULL && overlay_debugging)
     {
-      asection *section = find_pc_overlay (memaddr);
+      struct obj_section *section = find_pc_overlay (memaddr);
       if (pc_in_unmapped_range (memaddr, section))
 	return xfer_memory (memaddr, readbuf, len, 0, NULL, ops);
     }
@@ -1187,12 +1184,13 @@ target_xfer_partial (struct target_ops *ops,
       const unsigned char *myaddr = NULL;
 
       fprintf_unfiltered (gdb_stdlog,
-			  "%s:target_xfer_partial (%d, %s, 0x%lx,  0x%lx,  0x%s, %s) = %s",
+			  "%s:target_xfer_partial (%d, %s, 0x%lx,  0x%lx,  %s, %s) = %s",
 			  ops->to_shortname,
 			  (int) object,
 			  (annex ? annex : "(null)"),
 			  (long) readbuf, (long) writebuf,
-			  paddr_nz (offset), paddr_d (len), paddr_d (retval));
+			  core_addr_to_string_nz (offset),
+			  plongest (len), plongest (retval));
 
       if (readbuf)
 	myaddr = readbuf;
@@ -1776,9 +1774,9 @@ target_preopen (int from_tty)
 
   /* Calling target_kill may remove the target from the stack.  But if
      it doesn't (which seems like a win for UDI), remove it now.  */
-
-  if (target_has_execution)
-    pop_target ();
+  /* Leave the exec target, though.  The user may be switching from a
+     live process to a core of the same program.  */
+  pop_all_targets_above (file_stratum, 0);
 
   target_pre_inferior (from_tty);
 }
@@ -2145,6 +2143,29 @@ find_default_is_async_p (void)
   return 0;
 }
 
+int
+find_default_supports_non_stop (void)
+{
+  struct target_ops *t;
+
+  t = find_default_run_target (NULL);
+  if (t && t->to_supports_non_stop)
+    return (t->to_supports_non_stop) ();
+  return 0;
+}
+
+int
+target_supports_non_stop ()
+{
+  struct target_ops *t;
+  for (t = &current_target; t != NULL; t = t->beneath)
+    if (t->to_supports_non_stop)
+      return t->to_supports_non_stop ();
+
+  return 0;
+}
+
+
 static int
 default_region_ok_for_hw_watchpoint (CORE_ADDR addr, int len)
 {
@@ -2419,6 +2440,7 @@ init_dummy_target (void)
   dummy_target.to_create_inferior = find_default_create_inferior;
   dummy_target.to_can_async_p = find_default_can_async_p;
   dummy_target.to_is_async_p = find_default_is_async_p;
+  dummy_target.to_supports_non_stop = find_default_supports_non_stop;
   dummy_target.to_pid_to_str = normal_pid_to_str;
   dummy_target.to_stratum = dummy_stratum;
   dummy_target.to_find_memory_regions = dummy_find_memory_regions;
@@ -2547,18 +2569,17 @@ debug_print_register (const char * func,
   struct gdbarch *gdbarch = get_regcache_arch (regcache);
   fprintf_unfiltered (gdb_stdlog, "%s ", func);
   if (regno >= 0 && regno < gdbarch_num_regs (gdbarch)
-			    + gdbarch_num_pseudo_regs (gdbarch)
       && gdbarch_register_name (gdbarch, regno) != NULL
       && gdbarch_register_name (gdbarch, regno)[0] != '\0')
     fprintf_unfiltered (gdb_stdlog, "(%s)",
 			gdbarch_register_name (gdbarch, regno));
   else
     fprintf_unfiltered (gdb_stdlog, "(%d)", regno);
-  if (regno >= 0)
+  if (regno >= 0 && regno < gdbarch_num_regs (gdbarch))
     {
       int i, size = register_size (gdbarch, regno);
       unsigned char buf[MAX_REGISTER_SIZE];
-      regcache_cooked_read (regcache, regno, buf);
+      regcache_raw_collect (regcache, regno, buf);
       fprintf_unfiltered (gdb_stdlog, " = ");
       for (i = 0; i < size; i++)
 	{
@@ -2567,8 +2588,8 @@ debug_print_register (const char * func,
       if (size <= sizeof (LONGEST))
 	{
 	  ULONGEST val = extract_unsigned_integer (buf, size);
-	  fprintf_unfiltered (gdb_stdlog, " 0x%s %s",
-			      paddr_nz (val), paddr_d (val));
+	  fprintf_unfiltered (gdb_stdlog, " %s %s",
+			      core_addr_to_string_nz (val), plongest (val));
 	}
     }
   fprintf_unfiltered (gdb_stdlog, "\n");
@@ -3158,6 +3179,35 @@ maintenance_print_target_stack (char *cmd, int from_tty)
     }
 }
 
+/* Controls if async mode is permitted.  */
+int target_async_permitted = 0;
+
+/* The set command writes to this variable.  If the inferior is
+   executing, linux_nat_async_permitted is *not* updated.  */
+static int target_async_permitted_1 = 0;
+
+static void
+set_maintenance_target_async_permitted (char *args, int from_tty,
+					struct cmd_list_element *c)
+{
+  if (target_has_execution)
+    {
+      target_async_permitted_1 = target_async_permitted;
+      error (_("Cannot change this setting while the inferior is running."));
+    }
+
+  target_async_permitted = target_async_permitted_1;
+}
+
+static void
+show_maintenance_target_async_permitted (struct ui_file *file, int from_tty,
+					 struct cmd_list_element *c,
+					 const char *value)
+{
+  fprintf_filtered (file, _("\
+Controlling the inferior in asynchronous mode is %s.\n"), value);
+}
+
 void
 initialize_targets (void)
 {
@@ -3194,6 +3244,16 @@ result in significant performance improvement for remote targets."),
   add_cmd ("target-stack", class_maintenance, maintenance_print_target_stack,
            _("Print the name of each layer of the internal target stack."),
            &maintenanceprintlist);
+
+  add_setshow_boolean_cmd ("target-async", no_class,
+			   &target_async_permitted_1, _("\
+Set whether gdb controls the inferior in asynchronous mode."), _("\
+Show whether gdb controls the inferior in asynchronous mode."), _("\
+Tells gdb whether to control the inferior in asynchronous mode."),
+			   set_maintenance_target_async_permitted,
+			   show_maintenance_target_async_permitted,
+			   &setlist,
+			   &showlist);
 
   target_dcache = dcache_init ();
 }

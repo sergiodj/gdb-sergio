@@ -135,6 +135,7 @@ print_symbol_bcache_statistics (void)
   {
     printf_filtered (_("Byte cache statistics for '%s':\n"), objfile->name);
     print_bcache_statistics (objfile->psymbol_cache, "partial symbol cache");
+    print_bcache_statistics (objfile->macro_cache, "preprocessor macro cache");
   }
   immediate_quit--;
 }
@@ -270,9 +271,11 @@ dump_msymbols (struct objfile *objfile, struct ui_file *outfile)
       fprintf_filtered (outfile, "No minimal symbols found.\n");
       return;
     }
-  for (index = 0, msymbol = objfile->msymbols;
-       DEPRECATED_SYMBOL_NAME (msymbol) != NULL; msymbol++, index++)
+  index = 0;
+  ALL_OBJFILE_MSYMBOLS (objfile, msymbol)
     {
+      struct obj_section *section = SYMBOL_OBJ_SECTION (msymbol);
+
       switch (msymbol->type)
 	{
 	case mst_unknown:
@@ -308,11 +311,11 @@ dump_msymbols (struct objfile *objfile, struct ui_file *outfile)
 	}
       fprintf_filtered (outfile, "[%2d] %c ", index, ms_type);
       fputs_filtered (paddress (SYMBOL_VALUE_ADDRESS (msymbol)), outfile);
-      fprintf_filtered (outfile, " %s", DEPRECATED_SYMBOL_NAME (msymbol));
-      if (SYMBOL_BFD_SECTION (msymbol))
+      fprintf_filtered (outfile, " %s", SYMBOL_LINKAGE_NAME (msymbol));
+      if (section)
 	fprintf_filtered (outfile, " section %s",
 			  bfd_section_name (objfile->obfd,
-					    SYMBOL_BFD_SECTION (msymbol)));
+					    section->the_bfd_section));
       if (SYMBOL_DEMANGLED_NAME (msymbol) != NULL)
 	{
 	  fprintf_filtered (outfile, "  %s", SYMBOL_DEMANGLED_NAME (msymbol));
@@ -320,6 +323,7 @@ dump_msymbols (struct objfile *objfile, struct ui_file *outfile)
       if (msymbol->filename)
 	fprintf_filtered (outfile, "  %s", msymbol->filename);
       fputs_filtered ("\n", outfile);
+      index++;
     }
   if (objfile->minimal_symbol_count != index)
     {
@@ -459,7 +463,8 @@ dump_symtab_1 (struct objfile *objfile, struct symtab *symtab,
 	  fputs_filtered (paddress (BLOCK_END (b)), outfile);
 	  if (BLOCK_FUNCTION (b))
 	    {
-	      fprintf_filtered (outfile, ", function %s", DEPRECATED_SYMBOL_NAME (BLOCK_FUNCTION (b)));
+	      fprintf_filtered (outfile, ", function %s",
+				SYMBOL_LINKAGE_NAME (BLOCK_FUNCTION (b)));
 	      if (SYMBOL_DEMANGLED_NAME (BLOCK_FUNCTION (b)) != NULL)
 		{
 		  fprintf_filtered (outfile, ", %s",
@@ -564,16 +569,17 @@ print_symbol (void *args)
   struct symbol *symbol = ((struct print_symbol_args *) args)->symbol;
   int depth = ((struct print_symbol_args *) args)->depth;
   struct ui_file *outfile = ((struct print_symbol_args *) args)->outfile;
+  struct obj_section *section = SYMBOL_OBJ_SECTION (symbol);
 
   print_spaces (depth, outfile);
   if (SYMBOL_DOMAIN (symbol) == LABEL_DOMAIN)
     {
       fprintf_filtered (outfile, "label %s at ", SYMBOL_PRINT_NAME (symbol));
       fputs_filtered (paddress (SYMBOL_VALUE_ADDRESS (symbol)), outfile);
-      if (SYMBOL_BFD_SECTION (symbol))
+      if (section)
 	fprintf_filtered (outfile, " section %s\n",
-		       bfd_section_name (SYMBOL_BFD_SECTION (symbol)->owner,
-					 SYMBOL_BFD_SECTION (symbol)));
+			  bfd_section_name (section->the_bfd_section->owner,
+					    section->the_bfd_section));
       else
 	fprintf_filtered (outfile, "\n");
       return 1;
@@ -591,7 +597,7 @@ print_symbol (void *args)
 			  ? "enum"
 		     : (TYPE_CODE (SYMBOL_TYPE (symbol)) == TYPE_CODE_STRUCT
 			? "struct" : "union")),
-			    DEPRECATED_SYMBOL_NAME (symbol));
+			    SYMBOL_LINKAGE_NAME (symbol));
 	  LA_PRINT_TYPE (SYMBOL_TYPE (symbol), "", outfile, 1, depth);
 	}
       fprintf_filtered (outfile, ";\n");
@@ -635,11 +641,10 @@ print_symbol (void *args)
 	case LOC_STATIC:
 	  fprintf_filtered (outfile, "static at ");
 	  fputs_filtered (paddress (SYMBOL_VALUE_ADDRESS (symbol)), outfile);
-	  if (SYMBOL_BFD_SECTION (symbol))
+	  if (section)
 	    fprintf_filtered (outfile, " section %s",
-			      bfd_section_name
-			      (SYMBOL_BFD_SECTION (symbol)->owner,
-			       SYMBOL_BFD_SECTION (symbol)));
+			      bfd_section_name (section->the_bfd_section->owner,
+						section->the_bfd_section));
 	  break;
 
 	case LOC_REGISTER:
@@ -674,11 +679,10 @@ print_symbol (void *args)
 	case LOC_LABEL:
 	  fprintf_filtered (outfile, "label at ");
 	  fputs_filtered (paddress (SYMBOL_VALUE_ADDRESS (symbol)), outfile);
-	  if (SYMBOL_BFD_SECTION (symbol))
+	  if (section)
 	    fprintf_filtered (outfile, " section %s",
-			      bfd_section_name
-			      (SYMBOL_BFD_SECTION (symbol)->owner,
-			       SYMBOL_BFD_SECTION (symbol)));
+			      bfd_section_name (section->the_bfd_section->owner,
+						section->the_bfd_section));
 	  break;
 
 	case LOC_BLOCK:
@@ -690,11 +694,10 @@ print_symbol (void *args)
 	  fprintf_filtered (outfile, "..");
 	  fputs_filtered (paddress (BLOCK_END (SYMBOL_BLOCK_VALUE (symbol))),
 			  outfile);
-	  if (SYMBOL_BFD_SECTION (symbol))
+	  if (section)
 	    fprintf_filtered (outfile, " section %s",
-			      bfd_section_name
-			      (SYMBOL_BFD_SECTION (symbol)->owner,
-			       SYMBOL_BFD_SECTION (symbol)));
+			      bfd_section_name (section->the_bfd_section->owner,
+						section->the_bfd_section));
 	  break;
 
 	case LOC_COMPUTED:
@@ -775,7 +778,7 @@ print_partial_symbols (struct partial_symbol **p, int count, char *what,
   fprintf_filtered (outfile, "  %s partial symbols:\n", what);
   while (count-- > 0)
     {
-      fprintf_filtered (outfile, "    `%s'", DEPRECATED_SYMBOL_NAME (*p));
+      fprintf_filtered (outfile, "    `%s'", SYMBOL_LINKAGE_NAME (*p));
       if (SYMBOL_DEMANGLED_NAME (*p) != NULL)
 	{
 	  fprintf_filtered (outfile, "  `%s'", SYMBOL_DEMANGLED_NAME (*p));
@@ -1091,12 +1094,12 @@ maintenance_check_symtabs (char *ignore, int from_tty)
     length = ps->n_static_syms;
     while (length--)
       {
-	sym = lookup_block_symbol (b, DEPRECATED_SYMBOL_NAME (*psym),
+	sym = lookup_block_symbol (b, SYMBOL_LINKAGE_NAME (*psym),
 				   NULL, SYMBOL_DOMAIN (*psym));
 	if (!sym)
 	  {
 	    printf_filtered ("Static symbol `");
-	    puts_filtered (DEPRECATED_SYMBOL_NAME (*psym));
+	    puts_filtered (SYMBOL_LINKAGE_NAME (*psym));
 	    printf_filtered ("' only found in ");
 	    puts_filtered (ps->filename);
 	    printf_filtered (" psymtab\n");
@@ -1108,12 +1111,12 @@ maintenance_check_symtabs (char *ignore, int from_tty)
     length = ps->n_global_syms;
     while (length--)
       {
-	sym = lookup_block_symbol (b, DEPRECATED_SYMBOL_NAME (*psym),
+	sym = lookup_block_symbol (b, SYMBOL_LINKAGE_NAME (*psym),
 				   NULL, SYMBOL_DOMAIN (*psym));
 	if (!sym)
 	  {
 	    printf_filtered ("Global symbol `");
-	    puts_filtered (DEPRECATED_SYMBOL_NAME (*psym));
+	    puts_filtered (SYMBOL_LINKAGE_NAME (*psym));
 	    printf_filtered ("' only found in ");
 	    puts_filtered (ps->filename);
 	    printf_filtered (" psymtab\n");

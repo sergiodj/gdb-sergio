@@ -147,12 +147,12 @@ struct general_symbol_info
 
   short section;
 
-  /* The bfd section associated with this symbol. */
+  /* The section associated with this symbol. */
 
-  asection *bfd_section;
+  struct obj_section *obj_section;
 };
 
-extern CORE_ADDR symbol_overlayed_address (CORE_ADDR, asection *);
+extern CORE_ADDR symbol_overlayed_address (CORE_ADDR, struct obj_section *);
 
 /* Note that all the following SYMBOL_* macros are used with the
    SYMBOL argument being either a partial symbol, a minimal symbol or
@@ -162,7 +162,6 @@ extern CORE_ADDR symbol_overlayed_address (CORE_ADDR, asection *);
    functions, unless the callers are changed to pass in the ginfo
    field only, instead of the SYMBOL parameter.  */
 
-#define DEPRECATED_SYMBOL_NAME(symbol)	(symbol)->ginfo.name
 #define SYMBOL_VALUE(symbol)		(symbol)->ginfo.value.ivalue
 #define SYMBOL_VALUE_ADDRESS(symbol)	(symbol)->ginfo.value.address
 #define SYMBOL_VALUE_BYTES(symbol)	(symbol)->ginfo.value.bytes
@@ -170,7 +169,7 @@ extern CORE_ADDR symbol_overlayed_address (CORE_ADDR, asection *);
 #define SYMBOL_VALUE_CHAIN(symbol)	(symbol)->ginfo.value.chain
 #define SYMBOL_LANGUAGE(symbol)		(symbol)->ginfo.language
 #define SYMBOL_SECTION(symbol)		(symbol)->ginfo.section
-#define SYMBOL_BFD_SECTION(symbol)	(symbol)->ginfo.bfd_section
+#define SYMBOL_OBJ_SECTION(symbol)	(symbol)->ginfo.obj_section
 
 #define SYMBOL_CPLUS_DEMANGLED_NAME(symbol)	\
   (symbol)->ginfo.language_specific.cplus_specific.demangled_name
@@ -182,6 +181,15 @@ extern CORE_ADDR symbol_overlayed_address (CORE_ADDR, asection *);
 extern void symbol_init_language_specific (struct general_symbol_info *symbol,
 					   enum language language);
 
+/* Set just the linkage name of a symbol; do not try to demangle
+   it.  Used for constructs which do not have a mangled name,
+   e.g. struct tags.  Unlike SYMBOL_SET_NAMES, linkage_name must
+   be terminated and already on the objfile's obstack.  */
+#define SYMBOL_SET_LINKAGE_NAME(symbol,linkage_name) \
+  (symbol)->ginfo.name = (linkage_name)
+
+/* Set the linkage and natural names of a symbol, by demangling
+   the linkage name.  */
 #define SYMBOL_SET_NAMES(symbol,linkage_name,len,objfile) \
   symbol_set_names (&(symbol)->ginfo, linkage_name, len, objfile)
 extern void symbol_set_names (struct general_symbol_info *symbol,
@@ -194,10 +202,7 @@ extern void symbol_set_names (struct general_symbol_info *symbol,
    want to know what the linker thinks the symbol's name is.  Use
    SYMBOL_PRINT_NAME for output.  Use SYMBOL_DEMANGLED_NAME if you
    specifically need to know whether SYMBOL_NATURAL_NAME and
-   SYMBOL_LINKAGE_NAME are different.  Don't use
-   DEPRECATED_SYMBOL_NAME at all: instances of that macro should be
-   replaced by SYMBOL_NATURAL_NAME, SYMBOL_LINKAGE_NAME, or perhaps
-   SYMBOL_PRINT_NAME.  */
+   SYMBOL_LINKAGE_NAME are different.  */
 
 /* Return SYMBOL's "natural" name, i.e. the name that it was called in
    the original source code.  In languages like C++ where symbols may
@@ -211,11 +216,7 @@ extern char *symbol_natural_name (const struct general_symbol_info *symbol);
 /* Return SYMBOL's name from the point of view of the linker.  In
    languages like C++ where symbols may be mangled for ease of
    manipulation by the linker, this is the mangled name; otherwise,
-   it's the same as SYMBOL_NATURAL_NAME.  This is currently identical
-   to DEPRECATED_SYMBOL_NAME, but please use SYMBOL_LINKAGE_NAME when
-   appropriate: it conveys the additional semantic information that
-   you really have thought about the issue and decided that you mean
-   SYMBOL_LINKAGE_NAME instead of SYMBOL_NATURAL_NAME.  */
+   it's the same as SYMBOL_NATURAL_NAME.  */
 
 #define SYMBOL_LINKAGE_NAME(symbol)	(symbol)->ginfo.name
 
@@ -223,7 +224,7 @@ extern char *symbol_natural_name (const struct general_symbol_info *symbol);
    that symbol.  If no demangled name exists, return NULL. */
 #define SYMBOL_DEMANGLED_NAME(symbol) \
   (symbol_demangled_name (&(symbol)->ginfo))
-extern char *symbol_demangled_name (struct general_symbol_info *symbol);
+extern char *symbol_demangled_name (const struct general_symbol_info *symbol);
 
 /* Macro that returns a version of the name of a symbol that is
    suitable for output.  In C++ this is the "demangled" form of the
@@ -1028,7 +1029,7 @@ extern struct symbol *find_pc_function (CORE_ADDR);
 
 /* lookup the function corresponding to the address and section */
 
-extern struct symbol *find_pc_sect_function (CORE_ADDR, asection *);
+extern struct symbol *find_pc_sect_function (CORE_ADDR, struct obj_section *);
 
 /* lookup function from address, return name, start addr and end addr */
 
@@ -1049,7 +1050,8 @@ extern struct partial_symtab *find_pc_psymtab (CORE_ADDR);
 
 /* lookup partial symbol table by address and section */
 
-extern struct partial_symtab *find_pc_sect_psymtab (CORE_ADDR, asection *);
+extern struct partial_symtab *find_pc_sect_psymtab (CORE_ADDR,
+						    struct obj_section *);
 
 /* lookup full symbol table by address */
 
@@ -1057,7 +1059,7 @@ extern struct symtab *find_pc_symtab (CORE_ADDR);
 
 /* lookup full symbol table by address and section */
 
-extern struct symtab *find_pc_sect_symtab (CORE_ADDR, asection *);
+extern struct symtab *find_pc_sect_symtab (CORE_ADDR, struct obj_section *);
 
 /* lookup partial symbol by address */
 
@@ -1067,7 +1069,8 @@ extern struct partial_symbol *find_pc_psymbol (struct partial_symtab *,
 /* lookup partial symbol by address and section */
 
 extern struct partial_symbol *find_pc_sect_psymbol (struct partial_symtab *,
-						    CORE_ADDR, asection *);
+						    CORE_ADDR,
+						    struct obj_section *);
 
 extern int find_pc_line_pc_range (CORE_ADDR, CORE_ADDR *, CORE_ADDR *);
 
@@ -1125,9 +1128,8 @@ extern struct minimal_symbol *lookup_minimal_symbol_by_pc_name
 
 extern struct minimal_symbol *lookup_minimal_symbol_by_pc (CORE_ADDR);
 
-extern struct minimal_symbol *lookup_minimal_symbol_by_pc_section (CORE_ADDR,
-								   asection
-								   *);
+extern struct minimal_symbol
+  *lookup_minimal_symbol_by_pc_section (CORE_ADDR, struct obj_section *);
 
 extern struct minimal_symbol
   *lookup_solib_trampoline_symbol_by_pc (CORE_ADDR);
@@ -1147,7 +1149,7 @@ extern void msymbols_sort (struct objfile *objfile);
 struct symtab_and_line
 {
   struct symtab *symtab;
-  asection *section;
+  struct obj_section *section;
   /* Line number.  Line numbers start at 1 and proceed through symtab->nlines.
      0 is never a valid line number; it is used to indicate that line number
      information is not available.  */
@@ -1190,7 +1192,8 @@ extern struct symtab_and_line find_pc_line (CORE_ADDR, int);
 
 /* Same function, but specify a section as well as an address */
 
-extern struct symtab_and_line find_pc_sect_line (CORE_ADDR, asection *, int);
+extern struct symtab_and_line find_pc_sect_line (CORE_ADDR,
+						 struct obj_section *, int);
 
 /* Given a symtab and line number, return the pc there.  */
 
@@ -1255,14 +1258,14 @@ extern char **make_source_files_completion_list (char *, char *);
 
 /* symtab.c */
 
-int matching_bfd_sections (asection *, asection *);
+int matching_obj_sections (struct obj_section *, struct obj_section *);
 
 extern struct partial_symtab *find_main_psymtab (void);
 
 extern struct symtab *find_line_symtab (struct symtab *, int, int *, int *);
 
 extern CORE_ADDR find_function_start_pc (struct gdbarch *,
-					 CORE_ADDR, asection *);
+					 CORE_ADDR, struct obj_section *);
 
 extern struct symtab_and_line find_function_start_sal (struct symbol *sym,
 						       int);

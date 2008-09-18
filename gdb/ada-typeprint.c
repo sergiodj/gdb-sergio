@@ -585,7 +585,7 @@ print_record_field_types (struct type *type, struct type *outer_type,
   flds = 0;
   len = TYPE_NFIELDS (type);
 
-  if (len == 0 && (TYPE_FLAGS (type) & TYPE_FLAG_STUB) != 0)
+  if (len == 0 && TYPE_STUB (type))
     return -1;
 
   for (i = 0; i < len; i += 1)
@@ -812,6 +812,9 @@ ada_print_type (struct type *type0, char *varstring, struct ui_file *stream,
 	break;
       case TYPE_CODE_ARRAY:
 	print_array_type (type, stream, show, level);
+	break;
+      case TYPE_CODE_BOOL:
+	fprintf_filtered (stream, "(false, true)");
 	break;
       case TYPE_CODE_INT:
 	if (ada_is_fixed_point_type (type))

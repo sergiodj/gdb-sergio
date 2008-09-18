@@ -586,7 +586,7 @@ See set/show multiple-symbol."));
 		{
 		  if (canonical_arr[i] == NULL)
 		    {
-		      symname = DEPRECATED_SYMBOL_NAME (sym_arr[i]);
+		      symname = SYMBOL_LINKAGE_NAME (sym_arr[i]);
 		      canonical_arr[i] = savestring (symname, strlen (symname));
 		    }
 		}
@@ -609,7 +609,7 @@ See set/show multiple-symbol."));
 	    {
 	      if (canonical_arr)
 		{
-		  symname = DEPRECATED_SYMBOL_NAME (sym_arr[num]);
+		  symname = SYMBOL_LINKAGE_NAME (sym_arr[num]);
 		  make_cleanup (xfree, symname);
 		  canonical_arr[i] = savestring (symname, strlen (symname));
 		}
@@ -1556,10 +1556,11 @@ symtab_from_filename (char **argptr, char *p, int is_quote_enclosed,
   file_symtab = lookup_symtab (copy);
   if (file_symtab == 0)
     {
-      if (!have_full_symbols () && !have_partial_symbols ())
-	error (_("No symbol table is loaded.  Use the \"file\" command."));
       if (not_found_ptr)
 	*not_found_ptr = 1;
+      if (!have_full_symbols () && !have_partial_symbols ())
+	throw_error (NOT_FOUND_ERROR,
+		     _("No symbol table is loaded.  Use the \"file\" command."));
       throw_error (NOT_FOUND_ERROR, _("No source file named %s."), copy);
     }
 
@@ -1760,12 +1761,14 @@ decode_variable (char *copy, int funfirstline, char ***canonical,
   if (msymbol != NULL)
     return minsym_found (funfirstline, msymbol);
 
-  if (!have_full_symbols () &&
-      !have_partial_symbols () && !have_minimal_symbols ())
-    error (_("No symbol table is loaded.  Use the \"file\" command."));
-
   if (not_found_ptr)
     *not_found_ptr = 1;
+
+  if (!have_full_symbols ()
+      && !have_partial_symbols ()
+      && !have_minimal_symbols ())
+    throw_error (NOT_FOUND_ERROR,
+		 _("No symbol table is loaded.  Use the \"file\" command."));
   throw_error (NOT_FOUND_ERROR, _("Function \"%s\" not defined."), copy);
 }
 
@@ -1846,8 +1849,8 @@ minsym_found (int funfirstline, struct minimal_symbol *msymbol)
   values.sals = (struct symtab_and_line *)
     xmalloc (sizeof (struct symtab_and_line));
   values.sals[0] = find_pc_sect_line (SYMBOL_VALUE_ADDRESS (msymbol),
-				      (struct bfd_section *) 0, 0);
-  values.sals[0].section = SYMBOL_BFD_SECTION (msymbol);
+				      (struct obj_section *) 0, 0);
+  values.sals[0].section = SYMBOL_OBJ_SECTION (msymbol);
 
   /* The minimal symbol might point to a function descriptor;
      resolve it to the actual code address instead.  */

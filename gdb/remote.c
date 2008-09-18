@@ -59,6 +59,7 @@
 
 #include "remote-fileio.h"
 #include "gdb/fileio.h"
+#include "gdb_stat.h"
 
 #include "memory-map.h"
 
@@ -209,33 +210,6 @@ static void show_remote_protocol_packet_cmd (struct ui_file *file,
 
 void _initialize_remote (void);
 
-/* Controls if async mode is permitted.  */
-static int remote_async_permitted = 0;
-
-static int remote_async_permitted_set = 0;
-
-static void
-set_maintenance_remote_async_permitted (char *args, int from_tty,
-					struct cmd_list_element *c)
-{
-  if (target_has_execution)
-    {
-      remote_async_permitted_set = remote_async_permitted; /* revert */
-      error (_("Cannot change this setting while the inferior is running."));
-    }
-
-  remote_async_permitted = remote_async_permitted_set;
-}
-
-static void
-show_maintenance_remote_async_permitted (struct ui_file *file, int from_tty,
-					 struct cmd_list_element *c, const char *value)
-{
-  fprintf_filtered (file, _("\
-Controlling the remote inferior in asynchronous mode is %s.\n"),
-		    value);
-}
-
 /* For "remote".  */
 
 static struct cmd_list_element *remote_cmdlist;
@@ -274,6 +248,11 @@ struct remote_state
      skip calling getpkt.  This flag is set when BUF contains a
      stop reply packet and the target is not waiting.  */
   int cached_wait_status;
+
+  /* True, if in no ack mode.  That is, neither GDB nor the stub will
+     expect acks from each other.  The connection is assumed to be
+     reliable.  */
+  int noack_mode;
 };
 
 /* This data could be associated with a target, but we do not always
@@ -296,9 +275,9 @@ struct packet_reg
   long regnum; /* GDB's internal register number.  */
   LONGEST pnum; /* Remote protocol register number.  */
   int in_g_packet; /* Always part of G packet.  */
-  /* long size in bytes;  == register_size (current_gdbarch, regnum);
+  /* long size in bytes;  == register_size (target_gdbarch, regnum);
      at present.  */
-  /* char *name; == gdbarch_register_name (current_gdbarch, regnum);
+  /* char *name; == gdbarch_register_name (target_gdbarch, regnum);
      at present.  */
 };
 
@@ -331,7 +310,7 @@ static struct gdbarch_data *remote_gdbarch_data_handle;
 static struct remote_arch_state *
 get_remote_arch_state (void)
 {
-  return gdbarch_data (current_gdbarch, remote_gdbarch_data_handle);
+  return gdbarch_data (target_gdbarch, remote_gdbarch_data_handle);
 }
 
 /* Fetch the global remote target state.  */
@@ -467,7 +446,7 @@ get_remote_packet_size (void)
 static struct packet_reg *
 packet_reg_from_regnum (struct remote_arch_state *rsa, long regnum)
 {
-  if (regnum < 0 && regnum >= gdbarch_num_regs (current_gdbarch))
+  if (regnum < 0 && regnum >= gdbarch_num_regs (target_gdbarch))
     return NULL;
   else
     {
@@ -481,7 +460,7 @@ static struct packet_reg *
 packet_reg_from_pnum (struct remote_arch_state *rsa, LONGEST pnum)
 {
   int i;
-  for (i = 0; i < gdbarch_num_regs (current_gdbarch); i++)
+  for (i = 0; i < gdbarch_num_regs (target_gdbarch); i++)
     {
       struct packet_reg *r = &rsa->regs[i];
       if (r->pnum == pnum)
@@ -960,6 +939,7 @@ enum {
   PACKET_qSearch_memory,
   PACKET_vAttach,
   PACKET_vRun,
+  PACKET_QStartNoAckMode,
   PACKET_MAX
 };
 
@@ -2297,9 +2277,6 @@ remote_start_remote (struct ui_out *uiout, void *opaque)
 
   immediate_quit++;		/* Allow user to interrupt it.  */
 
-  /* Ack any packet which the remote side has already sent.  */
-  serial_write (remote_desc, "+", 1);
-
   /* Check whether the target is running now.  */
   putpkt ("?");
   getpkt (&rs->buf, &rs->buf_size, 0);
@@ -2424,7 +2401,7 @@ remote_check_symbols (struct objfile *objfile)
 
 	  /* If this is a function address, return the start of code
 	     instead of any data function descriptor.  */
-	  sym_addr = gdbarch_convert_from_func_ptr_addr (current_gdbarch,
+	  sym_addr = gdbarch_convert_from_func_ptr_addr (target_gdbarch,
 							 sym_addr,
 							 &current_target);
 
@@ -2557,6 +2534,8 @@ static struct protocol_feature remote_protocol_features[] = {
     PACKET_qXfer_spu_write },
   { "QPassSignals", PACKET_DISABLE, remote_supported_packet,
     PACKET_QPassSignals },
+  { "QStartNoAckMode", PACKET_DISABLE, remote_supported_packet,
+    PACKET_QStartNoAckMode },
 };
 
 static void
@@ -2690,13 +2669,15 @@ static void
 remote_open_1 (char *name, int from_tty, struct target_ops *target, int extended_p)
 {
   struct remote_state *rs = get_remote_state ();
+  struct packet_config *noack_config;
+
   if (name == 0)
     error (_("To open a remote debug connection, you need to specify what\n"
 	   "serial device is attached to the remote system\n"
 	   "(e.g. /dev/ttyS0, /dev/ttya, COM1, etc.)."));
 
   /* See FIXME above.  */
-  if (!remote_async_permitted)
+  if (!target_async_permitted)
     wait_forever_enabled_p = 1;
 
   /* If we're connected to a running target, target_preopen will kill it.
@@ -2771,6 +2752,7 @@ remote_open_1 (char *name, int from_tty, struct target_ops *target, int extended
      remote_query_supported or as they are needed.  */
   init_all_packet_configs ();
   rs->explicit_packet_size = 0;
+  rs->noack_mode = 0;
 
   general_thread = not_sent_ptid;
   continue_thread = not_sent_ptid;
@@ -2779,16 +2761,44 @@ remote_open_1 (char *name, int from_tty, struct target_ops *target, int extended
   use_threadinfo_query = 1;
   use_threadextra_query = 1;
 
+  /* Ack any packet which the remote side has already sent.  */
+  serial_write (remote_desc, "+", 1);
+
   /* The first packet we send to the target is the optional "supported
      packets" request.  If the target can answer this, it will tell us
      which later probes to skip.  */
   remote_query_supported ();
 
+  /* Next, we possibly activate noack mode.
+
+     If the QStartNoAckMode packet configuration is set to AUTO,
+     enable noack mode if the stub reported a wish for it with
+     qSupported.
+
+     If set to TRUE, then enable noack mode even if the stub didn't
+     report it in qSupported.  If the stub doesn't reply OK, the
+     session ends with an error.
+
+     If FALSE, then don't activate noack mode, regardless of what the
+     stub claimed should be the default with qSupported.  */
+
+  noack_config = &remote_protocol_packets[PACKET_QStartNoAckMode];
+
+  if (noack_config->detect == AUTO_BOOLEAN_TRUE
+      || (noack_config->detect == AUTO_BOOLEAN_AUTO
+	  && noack_config->support == PACKET_ENABLE))
+    {
+      putpkt ("QStartNoAckMode");
+      getpkt (&rs->buf, &rs->buf_size, 0);
+      if (packet_ok (rs->buf, noack_config) == PACKET_OK)
+	rs->noack_mode = 1;
+    }
+
   /* Next, if the target can specify a description, read it.  We do
      this before anything involving memory or registers.  */
   target_find_description ();
 
-  if (remote_async_permitted)
+  if (target_async_permitted)
     {
       /* With this target we start out by owning the terminal.  */
       remote_async_terminal_ours_p = 1;
@@ -2833,13 +2843,13 @@ remote_open_1 (char *name, int from_tty, struct target_ops *target, int extended
     if (ex.reason < 0)
       {
 	pop_target ();
-	if (remote_async_permitted)
+	if (target_async_permitted)
 	  wait_forever_enabled_p = 1;
 	throw_exception (ex);
       }
   }
 
-  if (remote_async_permitted)
+  if (target_async_permitted)
     wait_forever_enabled_p = 1;
 
   if (extended_p)
@@ -3367,7 +3377,7 @@ Give up (and stop debugging it)? "))
 static void
 remote_terminal_inferior (void)
 {
-  if (!remote_async_permitted)
+  if (!target_async_permitted)
     /* Nothing to do.  */
     return;
 
@@ -3397,7 +3407,7 @@ remote_terminal_inferior (void)
 static void
 remote_terminal_ours (void)
 {
-  if (!remote_async_permitted)
+  if (!target_async_permitted)
     /* Nothing to do.  */
     return;
 
@@ -3579,10 +3589,10 @@ Packet: '%s'\n"),
 			     phex_nz (pnum, 0), p, buf);
 
 		    fieldsize = hex2bin (p, regs,
-					 register_size (current_gdbarch,
+					 register_size (target_gdbarch,
 							reg->regnum));
 		    p += 2 * fieldsize;
-		    if (fieldsize < register_size (current_gdbarch,
+		    if (fieldsize < register_size (target_gdbarch,
 						   reg->regnum))
 		      warning (_("Remote reply is too short: %s"), buf);
 		    regcache_raw_supply (get_current_regcache (),
@@ -4096,7 +4106,7 @@ remote_address_masked (CORE_ADDR addr)
   int address_size = remote_address_size;
   /* If "remoteaddresssize" was not set, default to target address size.  */
   if (!address_size)
-    address_size = gdbarch_addr_bit (current_gdbarch);
+    address_size = gdbarch_addr_bit (target_gdbarch);
 
   if (address_size > 0
       && address_size < (sizeof (ULONGEST) * 8))
@@ -4789,6 +4799,11 @@ putpkt_binary (char *buf, int cnt)
       if (serial_write (remote_desc, buf2, p - buf2))
 	perror_with_name (_("putpkt: write failed"));
 
+      /* If this is a no acks version of the remote protocol, send the
+	 packet and move on.  */
+      if (rs->noack_mode)
+        break;
+
       /* Read until either a timeout occurs (-2) or '+' is read.  */
       while (1)
 	{
@@ -4865,6 +4880,7 @@ putpkt_binary (char *buf, int cnt)
 	}
 #endif
     }
+  return 0;
 }
 
 /* Come here after finding the start of a frame when we expected an
@@ -4920,6 +4936,7 @@ read_frame (char **buf_p,
   long bc;
   int c;
   char *buf = *buf_p;
+  struct remote_state *rs = get_remote_state ();
 
   csum = 0;
   bc = 0;
@@ -4964,6 +4981,12 @@ read_frame (char **buf_p,
 				  gdb_stdlog);
 		return -1;
 	      }
+
+	    /* Don't recompute the checksum; with no ack packets we
+	       don't have any way to indicate a packet retransmission
+	       is necessary.  */
+	    if (rs->noack_mode)
+	      return bc;
 
 	    pktcsum = (fromhex (check_0) << 4) | fromhex (check_1);
 	    if (csum == pktcsum)
@@ -5123,20 +5146,28 @@ getpkt_sane (char **buf, long *sizeof_buf, int forever)
 	      fputstrn_unfiltered (*buf, val, 0, gdb_stdlog);
 	      fprintf_unfiltered (gdb_stdlog, "\n");
 	    }
-	  serial_write (remote_desc, "+", 1);
+
+	  /* Skip the ack char if we're in no-ack mode.  */
+	  if (!rs->noack_mode)
+	    serial_write (remote_desc, "+", 1);
 	  return val;
 	}
 
       /* Try the whole thing again.  */
     retry:
-      serial_write (remote_desc, "-", 1);
+      /* Skip the nack char if we're in no-ack mode.  */
+      if (!rs->noack_mode)
+	serial_write (remote_desc, "-", 1);
     }
 
   /* We have tried hard enough, and just can't receive the packet.
      Give up.  */
 
   printf_unfiltered (_("Ignoring packet error, continuing...\n"));
-  serial_write (remote_desc, "+", 1);
+
+  /* Skip the ack char if we're in no-ack mode.  */
+  if (!rs->noack_mode)
+    serial_write (remote_desc, "+", 1);
   return -1;
 }
 
@@ -5343,8 +5374,7 @@ remote_insert_breakpoint (struct bp_target_info *bp_tgt)
       char *p;
       int bpsize;
 
-      gdbarch_breakpoint_from_pc
-	(current_gdbarch, &addr, &bpsize);
+      gdbarch_breakpoint_from_pc (target_gdbarch, &addr, &bpsize);
 
       rs = get_remote_state ();
       p = rs->buf;
@@ -5546,7 +5576,7 @@ remote_insert_hw_breakpoint (struct bp_target_info *bp_tgt)
      instruction, even though we aren't inserting one ourselves.  */
 
   gdbarch_breakpoint_from_pc
-    (current_gdbarch, &bp_tgt->placed_address, &bp_tgt->placed_size);
+    (target_gdbarch, &bp_tgt->placed_address, &bp_tgt->placed_size);
 
   if (remote_protocol_packets[PACKET_Z1].support == PACKET_DISABLE)
     return -1;
@@ -6475,7 +6505,7 @@ static const struct target_desc *
 remote_read_description (struct target_ops *target)
 {
   struct remote_g_packet_data *data
-    = gdbarch_data (current_gdbarch, remote_g_packet_data_handle);
+    = gdbarch_data (target_gdbarch, remote_g_packet_data_handle);
 
   if (!VEC_empty (remote_g_packet_guess_s, data->guesses))
     {
@@ -6639,7 +6669,8 @@ remote_hostio_send_command (int command_bytes, int which_packet,
   int ret, bytes_read;
   char *attachment_tmp;
 
-  if (remote_protocol_packets[which_packet].support == PACKET_DISABLE)
+  if (!remote_desc
+      || remote_protocol_packets[which_packet].support == PACKET_DISABLE)
     {
       *remote_errno = FILEIO_ENOSYS;
       return -1;
@@ -6901,6 +6932,97 @@ remote_hostio_close_cleanup (void *opaque)
   int remote_errno;
 
   remote_hostio_close (fd, &remote_errno);
+}
+
+
+static void *
+remote_bfd_iovec_open (struct bfd *abfd, void *open_closure)
+{
+  const char *filename = bfd_get_filename (abfd);
+  int fd, remote_errno;
+  int *stream;
+
+  gdb_assert (remote_filename_p (filename));
+
+  fd = remote_hostio_open (filename + 7, FILEIO_O_RDONLY, 0, &remote_errno);
+  if (fd == -1)
+    {
+      errno = remote_fileio_errno_to_host (remote_errno);
+      bfd_set_error (bfd_error_system_call);
+      return NULL;
+    }
+
+  stream = xmalloc (sizeof (int));
+  *stream = fd;
+  return stream;
+}
+
+static int
+remote_bfd_iovec_close (struct bfd *abfd, void *stream)
+{
+  int fd = *(int *)stream;
+  int remote_errno;
+
+  xfree (stream);
+
+  /* Ignore errors on close; these may happen if the remote
+     connection was already torn down.  */
+  remote_hostio_close (fd, &remote_errno);
+
+  return 1;
+}
+
+static file_ptr
+remote_bfd_iovec_pread (struct bfd *abfd, void *stream, void *buf,
+			file_ptr nbytes, file_ptr offset)
+{
+  int fd = *(int *)stream;
+  int remote_errno;
+  file_ptr pos, bytes;
+
+  pos = 0;
+  while (nbytes > pos)
+    {
+      bytes = remote_hostio_pread (fd, (char *)buf + pos, nbytes - pos,
+				   offset + pos, &remote_errno);
+      if (bytes == 0)
+        /* Success, but no bytes, means end-of-file.  */
+        break;
+      if (bytes == -1)
+	{
+	  errno = remote_fileio_errno_to_host (remote_errno);
+	  bfd_set_error (bfd_error_system_call);
+	  return -1;
+	}
+
+      pos += bytes;
+    }
+
+  return pos;
+}
+
+static int
+remote_bfd_iovec_stat (struct bfd *abfd, void *stream, struct stat *sb)
+{
+  /* FIXME: We should probably implement remote_hostio_stat.  */
+  sb->st_size = INT_MAX;
+  return 0;
+}
+
+int
+remote_filename_p (const char *filename)
+{
+  return strncmp (filename, "remote:", 7) == 0;
+}
+
+bfd *
+remote_bfd_open (const char *remote_file, const char *target)
+{
+  return bfd_openr_iovec (remote_file, target,
+			  remote_bfd_iovec_open, NULL,
+			  remote_bfd_iovec_pread,
+			  remote_bfd_iovec_close,
+			  remote_bfd_iovec_stat);
 }
 
 void
@@ -7208,7 +7330,7 @@ Specify the serial device it is connected to (e.g. /dev/ttya).";
 static int
 remote_can_async_p (void)
 {
-  if (!remote_async_permitted)
+  if (!target_async_permitted)
     /* We only enable async when the user specifically asks for it.  */
     return 0;
 
@@ -7219,7 +7341,7 @@ remote_can_async_p (void)
 static int
 remote_is_async_p (void)
 {
-  if (!remote_async_permitted)
+  if (!target_async_permitted)
     /* We only enable async when the user specifically asks for it.  */
     return 0;
 
@@ -7531,6 +7653,9 @@ Show the maximum size of the address (in bits) in a memory packet."), NULL,
   add_packet_config_cmd (&remote_protocol_packets[PACKET_vRun],
 			 "vRun", "run", 0);
 
+  add_packet_config_cmd (&remote_protocol_packets[PACKET_QStartNoAckMode],
+			 "QStartNoAckMode", "noack", 0);
+
   /* Keep the old ``set remote Z-packet ...'' working.  Each individual
      Z sub-packet has its own set and show commands, but users may
      have sets to this variable in their .gdbinit files (or in their
@@ -7569,17 +7694,6 @@ Transfer files to and from the remote target system."),
 Set the remote pathname for \"run\""), _("\
 Show the remote pathname for \"run\""), NULL, NULL, NULL,
 				   &remote_set_cmdlist, &remote_show_cmdlist);
-
-  add_setshow_boolean_cmd ("remote-async", class_maintenance,
-			   &remote_async_permitted_set, _("\
-Set whether gdb controls the remote inferior in asynchronous mode."), _("\
-Show whether gdb controls the remote inferior in asynchronous mode."), _("\
-Tells gdb whether to control the remote inferior in asynchronous mode."),
-			   set_maintenance_remote_async_permitted,
-			   show_maintenance_remote_async_permitted,
-			   &maintenance_set_cmdlist,
-			   &maintenance_show_cmdlist);
-
 
   /* Eventually initialize fileio.  See fileio.c */
   initialize_remote_fileio (remote_set_cmdlist, remote_show_cmdlist);

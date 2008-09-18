@@ -33,6 +33,7 @@
 #include "gdb_string.h"
 #include "block.h"
 #include "regcache.h"
+#include "user-regs.h"
 
 /* To make sense of this file, you should read doc/agentexpr.texi.
    Then look at the types and enums in ax-gdb.h.  For the code itself,
@@ -599,7 +600,7 @@ gen_var_ref (struct agent_expr *ax, struct axs_value *value, struct symbol *var)
     case LOC_UNRESOLVED:
       {
 	struct minimal_symbol *msym
-	= lookup_minimal_symbol (DEPRECATED_SYMBOL_NAME (var), NULL, NULL);
+	  = lookup_minimal_symbol (SYMBOL_LINKAGE_NAME (var), NULL, NULL);
 	if (!msym)
 	  error (_("Couldn't resolve symbol `%s'."), SYMBOL_PRINT_NAME (var));
 
@@ -1592,8 +1593,8 @@ gen_expr (union exp_element **pc, struct agent_expr *ax,
 	const char *name = &(*pc)[2].string;
 	int reg;
 	(*pc) += 4 + BYTES_TO_EXP_ELEM ((*pc)[1].longconst + 1);
-	reg = frame_map_name_to_regnum (deprecated_safe_get_selected_frame (),
-					name, strlen (name));
+	reg = user_reg_map_name_to_regnum (current_gdbarch,
+					   name, strlen (name));
 	if (reg == -1)
 	  internal_error (__FILE__, __LINE__,
 			  _("Register $%s not available"), name);

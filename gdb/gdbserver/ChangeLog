@@ -1,3 +1,44 @@
+2008-09-08  Pedro Alves  <pedro@codesourcery.com>
+
+	* regcache.c (new_register_cache): Return NULL if the register
+	cache size isn't known yet.
+	(free_register_cache): Avoid dereferencing a NULL regcache.
+
+2008-09-04  Daniel Jacobowitz  <dan@codesourcery.com>
+
+	* configure.srv: Merge MIPS and MIPS64.
+
+2008-08-24  Maciej W. Rozycki  <macro@linux-mips.org>
+
+	* Makefile.in (uninstall): Apply $(EXEEXT) too.
+
+2008-08-18  Luis Machado  <luisgpm@br.ibm.com>
+
+	* Makefile.in: Add required vsx dependencies.
+
+	* linux-ppc-low: Define PPC_FEATURE_HAS_VSX.
+	Declare init_registers_powerpc_vsx32l.
+	Declare init_registers_powerpc_vsx64l.
+	Define PTRACE_GETVSXREGS and PTRACE_SETVSXREGS.
+	(ppc_arch_setup): Check for VSX in hwcap.
+	(ppc_fill_vsxregset): New function.
+	(ppc_store_vsxregset): New function.
+	Add new VSX entry in regset_info target_regsets.
+
+	* configure.srv: Add new VSX dependencies.
+
+2008-08-12  Pedro Alves  <pedro@codesourcery.com>
+
+	* remote-utils.c (noack_mode, transport_is_reliable): New globals.
+	(remote_open): Set or clear transport_is_reliable.
+	(putpkt_binary): Don't expect acks in noack mode.
+	(getpkt): Don't send ack/nac in noack mode.
+	* server.c (handle_general_set): Handle QStartNoAckMode.
+	(handle_query): If connected by tcp pass QStartNoAckMode+ in
+	qSupported.
+	(main): Reset noack_mode on every connection.
+	* server.h (noack_mode): Declare.
+
 2008-08-07  Ralf Wildenhues  <Ralf.Wildenhues@gmx.de>
 
 	* Makefile.in (GDBREPLAY_OBS): New variable.

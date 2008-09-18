@@ -1,3 +1,218 @@
+2008-09-08  Tom Tromey  <tromey@redhat.com>
+
+	* elfxx-mips.c (mips16_stub_symndx) <sec>: Mark argument as
+	unused.
+
+2008-09-08  H.J. Lu  <hongjiu.lu@intel.com>
+	    Daniel Jacobowitz  <dan@codesourcery.com>
+
+	PR ld/3191
+	* dwarf2.c (struct adjusted_section): Renamed from struct
+	loadable_section.
+	(struct dwarf2_debug): Adjust for renaming.  Add version field.
+	(read_attribute_value): Correctly handle DW_FORM_ref_addr for
+	DWARF3.
+	(find_abstract_instance_name): Pass a pointer to
+	attribute instead of offset.  For DW_FORM_ref_addr, get the
+	entry at the offset from the .debug_info section.
+	(scan_unit_for_symbols): Update.
+	(parse_comp_unit): Allow DWARF3.  Save the version.
+	(unset_sections): Update for renaming.
+	(place_sections): Likewise.  Set new VMAs for DWARF sections
+	also.
+
+2008-09-08  Tristan Gingold  <gingold@adacore.com>
+
+	* configure.in: Update version to 2.19.50
+	* configure: Regenerated.
+
+2008-09-05  Daniel Jacobowitz  <dan@codesourcery.com>
+
+	* dwarf2.c: Change leading whitespace to tabs.
+
+2008-09-05  Tristan Gingold  <gingold@adacore.com>
+
+	Add MacOSX 64 bits support.
+	* mach-o.h (bfd_mach_o_ppc_thread_flavour): Add
+	BFD_MACH_O_PPC_THREAD_STATE_64.
+	(bfd_mach_o_i386_thread_flavour): Add BFD_MACH_O_x86_THREAD_STATE64,
+	BFD_MACH_O_x86_FLOAT_STATE64, BFD_MACH_O_x86_EXCEPTION_STATE64,
+	BFD_MACH_O_x86_THREAD_STATE, BFD_MACH_O_x86_FLOAT_STATE,
+	BFD_MACH_O_x86_EXCEPTION_STATE.
+	(bfd_mach_o_load_command_type): Add
+	BFD_MACH_O_LC_SEGMENT_64, BFD_MACH_O_LC_ROUTINES_64,
+	BFD_MACH_O_LC_UUID.	
+	(BFD_MACH_O_CPU_IS64BIT): Added.
+	(bfd_mach_o_cpu_type): Add BFD_MACH_O_CPU_TYPE_POWERPC_64,
+	BFD_MACH_O_CPU_TYPE_X86_64.
+	(bfd_mach_o_header): Add version field.
+	(bfd_mach_o_section) Add reserved3 field.
+	(bfd_mach_o_segment_command): Add initprot and maxprot fields.
+
+	* mach-o.c (N_TEXT, N_DATA, N_BSS): Added.
+	(bfd_mach_o_version): New function.
+	(bfd_mach_o_valid): Handle 64bits cpus.
+	(bfd_mach_o_write_header): handler 64bits headers.
+	(bfd_mach_o_scan_write_section_32, bfd_mach_o_scan_write_section_64):
+	New functions (from bfd_mach_o_scan_write_section) to handle both
+	flavors.
+	(bfd_mach_o_scan_write_segment): Parameter wide added to support
+	both flavors.
+	(bfd_mach_o_write_contents): Support both flavors.
+	(bfd_mach_o_read_header): Ditto.
+	(bfd_mach_o_scan_read_section_32, bfd_mach_o_scan_read_section_64):
+	New functions (from bfd_mach_o_scan_read_section) to support both
+	flavors.
+	(bfd_mach_o_scan_read_symtab_symbol): Support both flavors.
+	(bfd_mach_o_scan_read_symtab): Ditto.
+	(bfd_mach_o_scan_read_segment): Parameter wide added to support
+	both flavors.
+	(bfd_mach_o_scan_read_segment_32, bfd_mach_o_scan_read_segment_64):
+	New functions to call bfd_mach_o_scan_read_segment.
+	(bfd_mach_o_flatten_sections): Support both flavors.
+	(bfd_mach_o_scan_start_address): Ditto.
+	(bfd_mach_o_scan): Ditto.
+	(bfd_mach_o_lookup_section): Ditto.
+	
+2008-08-27  John David Anglin  <dave.anglin@nrc-cnrc.gc.ca>
+
+	* elf-hppa.h (elf_hppa_reloc_final_type): Handle R_PARISC_GPREL64,
+	R_PARISC_SEGREL32 and R_PARISC_SEGREL64.
+	* som.c (som_fixup_formats): Add R_DATA_GPREL fixup.
+	(som_hppa_howto_table): Likewise.
+	(hppa_som_gen_reloc_type): In case R_HPPA_GOTOFF, detect R_DATA_GPREL
+	final type.
+	(som_write_fixups): Handle R_DATA_GPREL.
+
+2008-08-26  Nick Clifton  <nickc@redhat.com>
+
+	* elf32-arm.c: Fix up comment describing Thumb to ARM interworking
+	stub.
+
+2008-08-25  Christophe Lyon  <christophe.lyon@st.com>
+
+	* elf32-arm.c (arm_thumb_arm_v4t_short_branch_stub): Define.
+	(elf32_arm_stub_type): Add arm_thumb_arm_v4t_stub_short_branch.
+	(arm_type_of_stub): Handle armv4t short branches. Update
+	prototype.
+	(arm_stub_is_thumb): Handle arm_thumb_arm_v4t_stub_short_branch.
+	(arm_build_one_stub): Likewise.
+	(arm_size_one_stub): Likewise.
+	(elf32_arm_size_stubs): Use new arm_type_of_stub prototype.
+	(arm_map_one_stub): Handle arm_thumb_arm_v4t_stub_short_branch.
+
+2008-08-24  Andreas Schwab  <schwab@suse.de>
+
+	* elf-eh-frame.c (_bfd_elf_write_section_eh_frame): Do proper
+	extension when calculating difference of offsets.
+
+2008-08-24  Alan Modra  <amodra@bigpond.net.au>
+
+	* configure.in: Update a number of obsolete autoconf macros.
+	* aclocal.m4: Regenerate.
+
+2008-08-23  Andreas Schwab  <schwab@suse.de>
+
+	* opncls.c (find_separate_debug_file): Use the canonical
+	absolute name of the bfd object for finding the debug file in
+	the global debugfile directory.
+
+2008-08-22  Jakub Jelinek  <jakub@redhat.com>
+
+	Fix PR ld/3290 regression for cross-files DW_FORM_ref_addr relocations.
+	* elflink.c (elf_link_add_object_symbols): Make debug symbols local
+	now only for non-RELOCATABLE targets.
+
+2008-08-20  Bob Wilson  <bob.wilson@acm.org>
+
+	* elf-bfd.h (elf_object_id): Add XTENSA_ELF_TDATA.
+	* elf32-xtensa.c (elf_howto_table): Add TLS relocations.
+	(elf_xtensa_reloc_type_lookup): Likewise.
+	(TCB_SIZE): Define.
+	(elf_xtensa_link_hash_entry): New.
+	(GOT_UNKNOWN, GOT_NORMAL, GOT_TLS_GD, GOT_TLS_IE, GOT_TLS_ANY): Define.
+	(elf_xtensa_hash_entry): Define.
+	(elf_xtensa_obj_tdata): New.
+	(elf_xtensa_tdata): Define.
+	(elf_xtensa_local_got_tls_type): Define.
+	(elf_xtensa_local_tlsfunc_refcounts): Define.
+	(is_xtensa_elf): Define.
+	(elf_xtensa_mkobject): New.
+	(elf_xtensa_link_hash_table): Add tlsbase field.
+	(elf_xtensa_link_hash_newfunc): New.
+	(elf_xtensa_link_hash_table_create): Use elf_xtensa_link_hash_newfunc.
+	Create an entry for "_TLS_MODULE_BASE_" and save it in tlsbase field.
+	(elf_xtensa_copy_indirect_symbol): New.
+	(elf_xtensa_check_relocs): Rewrite to handle TLS relocations.
+	(elf_xtensa_gc_sweep_hook): Likewise.
+	(elf_xtensa_allocate_dynrelocs): Optimize away GOT entries for
+	TLSDESC_FN relocations when an IE reference is seen.
+	(elf_xtensa_allocate_local_got_size): Likewise.
+	(elf_xtensa_always_size_sections): New.
+	(dtpoff_base, tpoff): New.
+	(elf_xtensa_do_reloc): Handle TLS relocations.
+	(replace_tls_insn): New.
+	(IS_XTENSA_TLS_RELOC): Define.
+	(elf_xtensa_relocate_section): Handle TLS relocations.
+	(get_indirect_call_dest_reg): New.
+	(bfd_elf32_mkobject): Define.
+	(elf_backend_always_size_sections): New.
+	(elf_backend_copy_indirect_symbol): New.
+	* reloc.c (BFD_RELOC_XTENSA_TLSDESC_FN, BFD_RELOC_XTENSA_TLSDESC_ARG)
+	(BFD_RELOC_XTENSA_TLS_DTPOFF, BFD_RELOC_XTENSA_TLS_TPOFF)
+	(BFD_RELOC_XTENSA_TLS_FUNC, BFD_RELOC_XTENSA_TLS_ARG)
+	(BFD_RELOC_XTENSA_TLS_CALL): New.
+	* bfd-in2.h: Regenerate.
+	* libbfd.h: Regenerate.
+
+2008-08-18  Richard Sandiford  <rdsandiford@googlemail.com>
+
+	* elfxx-mips.c (_bfd_mips_elf_copy_indirect_symbol): Copy MIPS16
+	stub information.
+
+2008-08-17  Nick Clifton  <nickc@redhat.com>
+
+	* elf32-arm.c: Tidy up the code.
+	(bfd_elf32_arm_allocate_interworking_sections): Move common code
+	into...
+	(arm_allocate_glue_section_space): ... New function.
+	(bfd_elf32_arm_add_glue_sections_to_bfd): Move common code
+	into...
+	(arm_make_glue_section): ... New function.
+
+	* elfxx-mips.c (_bfd_mips_elf_check_relocs): Handle the situation
+	where the sym_hashes are not available.
+
+2008-08-17  Alan Modra  <amodra@bigpond.net.au>
+
+	* bfd.c (struct _bfd): Correct outsymbols comment.
+	* bfd-in2.h: Regenerate.
+	* linker.c (bfd_generic_link_read_symbols): Renamed from..
+	(generic_link_read_symbols): ..this, and made global.
+
+2008-08-15  Alan Modra  <amodra@bigpond.net.au>
+
+	PR 6526
+	* configure.in: Invoke AC_USE_SYSTEM_EXTENSIONS.
+	* Makefile.in: Regenerate.
+	* aclocal.m4: Regenerate.
+	* config.in: Regenerate.
+	* configure: Regenerate.
+
+2008-08-14  Jaka Močnik  <jaka@xlab.si>
+
+	* coffgen.c (coff_find_nearest_line): Correct cached line index.
+
+2008-08-12  Alan Modra  <amodra@bigpond.net.au>
+
+	* elf32-ppc.c (allocate_dynrelocs): Ignore dyn_relocs when
+	!dynamic_sections_created.  Don't make symbols with got
+	references dynamic if !dynamic_sections_created.
+	* elf64-ppc.c (allocate_dynrelocs): Likewise.  Alloc dynamic
+	relocs on undefined symbols.
+	(ppc64_elf_relocate_section): Allow dynamic relocs on
+	undefined symbols.
+
 2008-08-11  Alan Modra  <amodra@bigpond.net.au>
 
 	* elf64-ppc.c (toc_adjusting_stub_needed): Any call via the plt

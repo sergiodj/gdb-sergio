@@ -31,6 +31,7 @@
 #include "gdbcore.h"
 #include "target.h"
 #include "inferior.h"
+#include "gdbthread.h"
 
 #include "solist.h"
 #include "solib.h"
@@ -421,6 +422,8 @@ enable_break (void)
 static void
 irix_solib_create_inferior_hook (void)
 {
+  struct thread_info *tp;
+
   if (!enable_break ())
     {
       warning (_("shared library handler failed to enable breakpoint"));
@@ -432,15 +435,16 @@ irix_solib_create_inferior_hook (void)
      can go groveling around in the dynamic linker structures to find
      out what we need to know about them. */
 
+  tp = inferior_thread ();
   clear_proceed_status ();
   stop_soon = STOP_QUIETLY;
-  stop_signal = TARGET_SIGNAL_0;
+  tp->stop_signal = TARGET_SIGNAL_0;
   do
     {
-      target_resume (pid_to_ptid (-1), 0, stop_signal);
+      target_resume (pid_to_ptid (-1), 0, tp->stop_signal);
       wait_for_inferior (0);
     }
-  while (stop_signal != TARGET_SIGNAL_TRAP);
+  while (tp->stop_signal != TARGET_SIGNAL_TRAP);
 
   /* We are now either at the "mapping complete" breakpoint (or somewhere
      else, a condition we aren't prepared to deal with anyway), so adjust
@@ -505,9 +509,9 @@ irix_current_sos (void)
 
   read_memory (debug_base,
 	       addr_buf,
-	       gdbarch_addr_bit (current_gdbarch) / TARGET_CHAR_BIT);
+	       gdbarch_addr_bit (target_gdbarch) / TARGET_CHAR_BIT);
   lma = extract_mips_address (addr_buf,
-			      gdbarch_addr_bit (current_gdbarch)
+			      gdbarch_addr_bit (target_gdbarch)
 				/ TARGET_CHAR_BIT);
 
   while (lma)
@@ -611,9 +615,9 @@ irix_open_symbol_file_object (void *from_ttyp)
   /* First link map member should be the executable.  */
   read_memory (debug_base,
 	       addr_buf,
-	       gdbarch_addr_bit (current_gdbarch) / TARGET_CHAR_BIT);
+	       gdbarch_addr_bit (target_gdbarch) / TARGET_CHAR_BIT);
   lma = extract_mips_address (addr_buf,
-			      gdbarch_addr_bit (current_gdbarch)
+			      gdbarch_addr_bit (target_gdbarch)
 				/ TARGET_CHAR_BIT);
   if (lma == 0)
     return 0;			/* failed somehow...  */

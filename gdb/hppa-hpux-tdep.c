@@ -97,7 +97,7 @@ hppa32_hpux_in_solib_call_trampoline (CORE_ADDR pc, char *name)
     return 1;
 
   minsym = lookup_minimal_symbol_by_pc (pc);
-  if (minsym && strcmp (DEPRECATED_SYMBOL_NAME (minsym), ".stub") == 0)
+  if (minsym && strcmp (SYMBOL_LINKAGE_NAME (minsym), ".stub") == 0)
     return 1;
 
   /* Get the unwind descriptor corresponding to PC, return zero
@@ -179,7 +179,7 @@ hppa64_hpux_in_solib_call_trampoline (CORE_ADDR pc, char *name)
   if (! minsym)
     return 0;
 
-  sec = SYMBOL_BFD_SECTION (minsym);
+  sec = SYMBOL_OBJ_SECTION (minsym)->the_bfd_section;
 
   if (bfd_get_section_vma (sec->owner, sec) <= pc
       && pc < (bfd_get_section_vma (sec->owner, sec)
@@ -376,8 +376,8 @@ hppa_hpux_skip_trampoline_code (struct frame_info *frame, CORE_ADDR pc)
 	  ALL_MSYMBOLS (objfile, msymbol)
 	  {
 	    if (MSYMBOL_TYPE (msymbol) == mst_text
-		&& strcmp (DEPRECATED_SYMBOL_NAME (msymbol),
-			    DEPRECATED_SYMBOL_NAME (msym)) == 0)
+		&& strcmp (SYMBOL_LINKAGE_NAME (msymbol),
+			    SYMBOL_LINKAGE_NAME (msym)) == 0)
 	      {
 		function_found = 1;
 		break;
@@ -472,11 +472,11 @@ hppa_hpux_skip_trampoline_code (struct frame_info *frame, CORE_ADDR pc)
 	      return orig_pc == pc ? 0 : pc & ~0x3;
 	    }
 
-	  libsym = lookup_minimal_symbol (DEPRECATED_SYMBOL_NAME (stubsym), NULL, NULL);
+	  libsym = lookup_minimal_symbol (SYMBOL_LINKAGE_NAME (stubsym), NULL, NULL);
 	  if (libsym == NULL)
 	    {
 	      warning (_("Unable to find library symbol for %s."),
-		       DEPRECATED_SYMBOL_NAME (stubsym));
+		       SYMBOL_PRINT_NAME (stubsym));
 	      return orig_pc == pc ? 0 : pc & ~0x3;
 	    }
 
@@ -1068,9 +1068,9 @@ hppa_hpux_find_dummy_bpaddr (CORE_ADDR addr)
     {
       /* First try the lowest address in the section; we can use it as long
          as it is "regular" code (i.e. not a stub) */
-      u = find_unwind_entry (sec->addr);
+      u = find_unwind_entry (obj_section_addr (sec));
       if (!u || u->stub_unwind.stub_type == 0)
-        return sec->addr;
+        return obj_section_addr (sec);
 
       /* Otherwise, we need to find a symbol for a regular function.  We
          do this by walking the list of msymbols in the objfile.  The symbol

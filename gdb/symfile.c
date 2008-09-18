@@ -53,6 +53,7 @@
 #include "varobj.h"
 #include "elf-bfd.h"
 #include "solib.h"
+#include "remote.h"
 
 #include <sys/types.h>
 #include <fcntl.h>
@@ -109,8 +110,6 @@ static struct sym_fns *find_sym_fns (bfd *);
 static void decrement_reading_symtab (void *);
 
 static void overlay_invalidate_all (void);
-
-static int overlay_is_mapped (struct obj_section *);
 
 void list_overlays_command (char *, int);
 
@@ -895,56 +894,6 @@ syms_from_objfile (struct objfile *objfile,
       init_objfile_sect_indices (objfile);
     }
 
-#ifndef DEPRECATED_IBM6000_TARGET
-  /* This is a SVR4/SunOS specific hack, I think.  In any event, it
-     screws RS/6000.  sym_offsets should be doing this sort of thing,
-     because it knows the mapping between bfd sections and
-     section_offsets.  */
-  /* This is a hack.  As far as I can tell, section offsets are not
-     target dependent.  They are all set to addr with a couple of
-     exceptions.  The exceptions are sysvr4 shared libraries, whose
-     offsets are kept in solib structures anyway and rs6000 xcoff
-     which handles shared libraries in a completely unique way.
-
-     Section offsets are built similarly, except that they are built
-     by adding addr in all cases because there is no clear mapping
-     from section_offsets into actual sections.  Note that solib.c
-     has a different algorithm for finding section offsets.
-
-     These should probably all be collapsed into some target
-     independent form of shared library support.  FIXME.  */
-
-  if (addrs)
-    {
-      struct obj_section *s;
-
- 	/* Map section offsets in "addr" back to the object's
- 	   sections by comparing the section names with bfd's
- 	   section names.  Then adjust the section address by
- 	   the offset. */ /* for gdb/13815 */
-
-      ALL_OBJFILE_OSECTIONS (objfile, s)
-	{
-	  CORE_ADDR s_addr = 0;
-	  int i;
-
- 	    for (i = 0;
-	         !s_addr && i < addrs->num_sections && addrs->other[i].name;
-		 i++)
- 	      if (strcmp (bfd_section_name (s->objfile->obfd,
-					    s->the_bfd_section),
-			  addrs->other[i].name) == 0)
- 	        s_addr = addrs->other[i].addr; /* end added for gdb/13815 */
-
-	  s->addr -= s->offset;
-	  s->addr += s_addr;
-	  s->endaddr -= s->offset;
-	  s->endaddr += s_addr;
-	  s->offset += s_addr;
-	}
-    }
-#endif /* not DEPRECATED_IBM6000_TARGET */
-
   (*objfile->sf->sym_read) (objfile, mainline);
 
   /* Don't allow char * to have a typename (else would get caddr_t).
@@ -1266,7 +1215,10 @@ build_id_verify (const char *filename, struct build_id *check)
   int retval = 0;
 
   /* We expect to be silent on the non-existing files.  */
-  abfd = bfd_openr (filename, gnutarget);
+  if (remote_filename_p (filename))
+    abfd = remote_bfd_open (filename, gnutarget);
+  else
+    abfd = bfd_openr (filename, gnutarget);
   if (abfd == NULL)
     return 0;
 
@@ -1357,18 +1309,22 @@ static int
 separate_debug_file_exists (const char *name, unsigned long crc)
 {
   unsigned long file_crc = 0;
-  int fd;
+  bfd *abfd;
   gdb_byte buffer[8*1024];
   int count;
 
-  fd = open (name, O_RDONLY | O_BINARY);
-  if (fd < 0)
+  if (remote_filename_p (name))
+    abfd = remote_bfd_open (name, gnutarget);
+  else
+    abfd = bfd_openr (name, gnutarget);
+
+  if (!abfd)
     return 0;
 
-  while ((count = read (fd, buffer, sizeof (buffer))) > 0)
+  while ((count = bfd_bread (buffer, sizeof (buffer), abfd)) > 0)
     file_crc = gnu_debuglink_crc32 (file_crc, buffer, count);
 
-  close (fd);
+  bfd_close (abfd);
 
   return crc == file_crc;
 }
@@ -1614,6 +1570,28 @@ symfile_bfd_open (char *name)
   int desc;
   char *absolute_name;
 
+  if (remote_filename_p (name))
+    {
+      name = xstrdup (name);
+      sym_bfd = remote_bfd_open (name, gnutarget);
+      if (!sym_bfd)
+	{
+	  make_cleanup (xfree, name);
+	  error (_("`%s': can't open to read symbols: %s."), name,
+		 bfd_errmsg (bfd_get_error ()));
+	}
+
+      if (!bfd_check_format (sym_bfd, bfd_object))
+	{
+	  bfd_close (sym_bfd);
+	  make_cleanup (xfree, name);
+	  error (_("`%s': can't read symbols: %s."), name,
+		 bfd_errmsg (bfd_get_error ()));
+	}
+
+      return sym_bfd;
+    }
+
   name = tilde_expand (name);	/* Returns 1st new malloc'd copy.  */
 
   /* Look down path for it, allocate 2nd new malloc'd copy.  */
@@ -1644,7 +1622,7 @@ symfile_bfd_open (char *name)
     {
       close (desc);
       make_cleanup (xfree, name);
-      error (_("\"%s\": can't open to read symbols: %s."), name,
+      error (_("`%s': can't open to read symbols: %s."), name,
 	     bfd_errmsg (bfd_get_error ()));
     }
   bfd_set_cacheable (sym_bfd, 1);
@@ -1656,7 +1634,7 @@ symfile_bfd_open (char *name)
          with the bfd).  */
       bfd_close (sym_bfd);	/* This also closes desc.  */
       make_cleanup (xfree, name);
-      error (_("\"%s\": can't read symbols: %s."), name,
+      error (_("`%s': can't read symbols: %s."), name,
 	     bfd_errmsg (bfd_get_error ()));
     }
 
@@ -2357,7 +2335,10 @@ reread_symbols (void)
 	      if (!bfd_close (objfile->obfd))
 		error (_("Can't close BFD for %s: %s"), objfile->name,
 		       bfd_errmsg (bfd_get_error ()));
-	      objfile->obfd = bfd_openr (obfd_filename, gnutarget);
+	      if (remote_filename_p (obfd_filename))
+		objfile->obfd = remote_bfd_open (obfd_filename, gnutarget);
+	      else
+		objfile->obfd = bfd_openr (obfd_filename, gnutarget);
 	      if (objfile->obfd == NULL)
 		error (_("Can't open %s to read symbols."), objfile->name);
 	      /* bfd_openr sets cacheable to true, which is what we want.  */
@@ -2421,8 +2402,6 @@ reread_symbols (void)
 		  (*objfile->sf->sym_finish) (objfile);
 		}
 
-	      /* We never make this a mapped file.  */
-	      objfile->md = NULL;
 	      objfile->psymbol_cache = bcache_xmalloc ();
 	      objfile->macro_cache = bcache_xmalloc ();
 	      /* obstack_init also initializes the obstack so it is
@@ -3272,7 +3251,7 @@ init_psymbol_list (struct objfile *objfile, int total_symbols)
    section, return that section.
    find_pc_overlay(pc):       find any overlay section that contains
    the pc, either in its VMA or its LMA
-   overlay_is_mapped(sect):       true if overlay is marked as mapped
+   section_is_mapped(sect):       true if overlay is marked as mapped
    section_is_overlay(sect):      true if section's VMA != LMA
    pc_in_mapped_range(pc,sec):    true if pc belongs to section's VMA
    pc_in_unmapped_range(...):     true if pc belongs to section's LMA
@@ -3294,14 +3273,18 @@ int overlay_cache_invalid = 0;	/* True if need to refresh mapped state */
    SECTION is loaded at an address different from where it will "run".  */
 
 int
-section_is_overlay (asection *section)
+section_is_overlay (struct obj_section *section)
 {
-  /* FIXME: need bfd *, so we can use bfd_section_lma methods. */
-
-  if (overlay_debugging)
-    if (section && section->lma != 0 &&
-	section->vma != section->lma)
-      return 1;
+  if (overlay_debugging && section)
+    {
+      bfd *abfd = section->objfile->obfd;
+      asection *bfd_section = section->the_bfd_section;
+  
+      if (bfd_section_lma (abfd, bfd_section) != 0
+	  && bfd_section_lma (abfd, bfd_section)
+	     != bfd_section_vma (abfd, bfd_section))
+	return 1;
+    }
 
   return 0;
 }
@@ -3316,13 +3299,12 @@ overlay_invalidate_all (void)
   struct obj_section *sect;
 
   ALL_OBJSECTIONS (objfile, sect)
-    if (section_is_overlay (sect->the_bfd_section))
-    sect->ovly_mapped = -1;
+    if (section_is_overlay (sect))
+      sect->ovly_mapped = -1;
 }
 
-/* Function: overlay_is_mapped (SECTION)
+/* Function: section_is_mapped (SECTION)
    Returns true if section is an overlay, and is currently mapped.
-   Private: public access is thru function section_is_mapped.
 
    Access to the ovly_mapped flag is restricted to this function, so
    that we can do automatic update.  If the global flag
@@ -3330,10 +3312,10 @@ overlay_invalidate_all (void)
    overlay_invalidate_all.  If the mapped state of the particular
    section is stale, then call TARGET_OVERLAY_UPDATE to refresh it.  */
 
-static int
-overlay_is_mapped (struct obj_section *osect)
+int
+section_is_mapped (struct obj_section *osect)
 {
-  if (osect == 0 || !section_is_overlay (osect->the_bfd_section))
+  if (osect == 0 || !section_is_overlay (osect))
     return 0;
 
   switch (overlay_debugging)
@@ -3360,41 +3342,26 @@ overlay_is_mapped (struct obj_section *osect)
     }
 }
 
-/* Function: section_is_mapped
-   Returns true if section is an overlay, and is currently mapped.  */
-
-int
-section_is_mapped (asection *section)
-{
-  struct objfile *objfile;
-  struct obj_section *osect;
-
-  if (overlay_debugging)
-    if (section && section_is_overlay (section))
-      ALL_OBJSECTIONS (objfile, osect)
-	if (osect->the_bfd_section == section)
-	return overlay_is_mapped (osect);
-
-  return 0;
-}
-
 /* Function: pc_in_unmapped_range
    If PC falls into the lma range of SECTION, return true, else false.  */
 
 CORE_ADDR
-pc_in_unmapped_range (CORE_ADDR pc, asection *section)
+pc_in_unmapped_range (CORE_ADDR pc, struct obj_section *section)
 {
-  /* FIXME: need bfd *, so we can use bfd_section_lma methods. */
+  if (section_is_overlay (section))
+    {
+      bfd *abfd = section->objfile->obfd;
+      asection *bfd_section = section->the_bfd_section;
 
-  int size;
+      /* We assume the LMA is relocated by the same offset as the VMA.  */
+      bfd_vma size = bfd_get_section_size (bfd_section);
+      CORE_ADDR offset = obj_section_offset (section);
 
-  if (overlay_debugging)
-    if (section && section_is_overlay (section))
-      {
-	size = bfd_get_section_size (section);
-	if (section->lma <= pc && pc < section->lma + size)
-	  return 1;
-      }
+      if (bfd_get_section_lma (abfd, bfd_section) + offset <= pc
+	  && pc < bfd_get_section_lma (abfd, bfd_section) + offset + size)
+	return 1;
+    }
+
   return 0;
 }
 
@@ -3402,19 +3369,15 @@ pc_in_unmapped_range (CORE_ADDR pc, asection *section)
    If PC falls into the vma range of SECTION, return true, else false.  */
 
 CORE_ADDR
-pc_in_mapped_range (CORE_ADDR pc, asection *section)
+pc_in_mapped_range (CORE_ADDR pc, struct obj_section *section)
 {
-  /* FIXME: need bfd *, so we can use bfd_section_vma methods. */
+  if (section_is_overlay (section))
+    {
+      if (obj_section_addr (section) <= pc
+	  && pc < obj_section_endaddr (section))
+	return 1;
+    }
 
-  int size;
-
-  if (overlay_debugging)
-    if (section && section_is_overlay (section))
-      {
-	size = bfd_get_section_size (section);
-	if (section->vma <= pc && pc < section->vma + size)
-	  return 1;
-      }
   return 0;
 }
 
@@ -3422,14 +3385,12 @@ pc_in_mapped_range (CORE_ADDR pc, asection *section)
 /* Return true if the mapped ranges of sections A and B overlap, false
    otherwise.  */
 static int
-sections_overlap (asection *a, asection *b)
+sections_overlap (struct obj_section *a, struct obj_section *b)
 {
-  /* FIXME: need bfd *, so we can use bfd_section_vma methods. */
-
-  CORE_ADDR a_start = a->vma;
-  CORE_ADDR a_end = a->vma + bfd_get_section_size (a);
-  CORE_ADDR b_start = b->vma;
-  CORE_ADDR b_end = b->vma + bfd_get_section_size (b);
+  CORE_ADDR a_start = obj_section_addr (a);
+  CORE_ADDR a_end = obj_section_endaddr (a);
+  CORE_ADDR b_start = obj_section_addr (b);
+  CORE_ADDR b_end = obj_section_endaddr (b);
 
   return (a_start < b_end && b_start < a_end);
 }
@@ -3439,14 +3400,16 @@ sections_overlap (asection *a, asection *b)
    May be the same as PC.  */
 
 CORE_ADDR
-overlay_unmapped_address (CORE_ADDR pc, asection *section)
+overlay_unmapped_address (CORE_ADDR pc, struct obj_section *section)
 {
-  /* FIXME: need bfd *, so we can use bfd_section_lma methods. */
+  if (section_is_overlay (section) && pc_in_mapped_range (pc, section))
+    {
+      bfd *abfd = section->objfile->obfd;
+      asection *bfd_section = section->the_bfd_section;
 
-  if (overlay_debugging)
-    if (section && section_is_overlay (section) &&
-	pc_in_mapped_range (pc, section))
-      return pc + section->lma - section->vma;
+      return pc + bfd_section_lma (abfd, bfd_section)
+		- bfd_section_vma (abfd, bfd_section);
+    }
 
   return pc;
 }
@@ -3456,14 +3419,16 @@ overlay_unmapped_address (CORE_ADDR pc, asection *section)
    May be the same as PC.  */
 
 CORE_ADDR
-overlay_mapped_address (CORE_ADDR pc, asection *section)
+overlay_mapped_address (CORE_ADDR pc, struct obj_section *section)
 {
-  /* FIXME: need bfd *, so we can use bfd_section_vma methods. */
+  if (section_is_overlay (section) && pc_in_unmapped_range (pc, section))
+    {
+      bfd *abfd = section->objfile->obfd;
+      asection *bfd_section = section->the_bfd_section;
 
-  if (overlay_debugging)
-    if (section && section_is_overlay (section) &&
-	pc_in_unmapped_range (pc, section))
-      return pc + section->vma - section->lma;
+      return pc + bfd_section_vma (abfd, bfd_section)
+		- bfd_section_lma (abfd, bfd_section);
+    }
 
   return pc;
 }
@@ -3474,7 +3439,7 @@ overlay_mapped_address (CORE_ADDR pc, asection *section)
    depending on whether the section is mapped or not.  */
 
 CORE_ADDR
-symbol_overlayed_address (CORE_ADDR address, asection *section)
+symbol_overlayed_address (CORE_ADDR address, struct obj_section *section)
 {
   if (overlay_debugging)
     {
@@ -3502,7 +3467,7 @@ symbol_overlayed_address (CORE_ADDR address, asection *section)
    Else if PC matches an unmapped section's VMA, return that section.
    Else if PC matches an unmapped section's LMA, return that section.  */
 
-asection *
+struct obj_section *
 find_pc_overlay (CORE_ADDR pc)
 {
   struct objfile *objfile;
@@ -3510,26 +3475,26 @@ find_pc_overlay (CORE_ADDR pc)
 
   if (overlay_debugging)
     ALL_OBJSECTIONS (objfile, osect)
-      if (section_is_overlay (osect->the_bfd_section))
+      if (section_is_overlay (osect))
       {
-	if (pc_in_mapped_range (pc, osect->the_bfd_section))
+	if (pc_in_mapped_range (pc, osect))
 	  {
-	    if (overlay_is_mapped (osect))
-	      return osect->the_bfd_section;
+	    if (section_is_mapped (osect))
+	      return osect;
 	    else
 	      best_match = osect;
 	  }
-	else if (pc_in_unmapped_range (pc, osect->the_bfd_section))
+	else if (pc_in_unmapped_range (pc, osect))
 	  best_match = osect;
       }
-  return best_match ? best_match->the_bfd_section : NULL;
+  return best_match;
 }
 
 /* Function: find_pc_mapped_section (PC)
    If PC falls into the VMA address range of an overlay section that is
    currently marked as MAPPED, return that section.  Else return NULL.  */
 
-asection *
+struct obj_section *
 find_pc_mapped_section (CORE_ADDR pc)
 {
   struct objfile *objfile;
@@ -3537,9 +3502,8 @@ find_pc_mapped_section (CORE_ADDR pc)
 
   if (overlay_debugging)
     ALL_OBJSECTIONS (objfile, osect)
-      if (pc_in_mapped_range (pc, osect->the_bfd_section) &&
-	  overlay_is_mapped (osect))
-      return osect->the_bfd_section;
+      if (pc_in_mapped_range (pc, osect) && section_is_mapped (osect))
+	return osect;
 
   return NULL;
 }
@@ -3556,7 +3520,7 @@ list_overlays_command (char *args, int from_tty)
 
   if (overlay_debugging)
     ALL_OBJSECTIONS (objfile, osect)
-      if (overlay_is_mapped (osect))
+      if (section_is_mapped (osect))
       {
 	const char *name;
 	bfd_vma lma, vma;
@@ -3591,7 +3555,6 @@ map_overlay_command (char *args, int from_tty)
 {
   struct objfile *objfile, *objfile2;
   struct obj_section *sec, *sec2;
-  asection *bfdsec;
 
   if (!overlay_debugging)
     error (_("\
@@ -3606,8 +3569,7 @@ the 'overlay manual' command."));
     if (!strcmp (bfd_section_name (objfile->obfd, sec->the_bfd_section), args))
     {
       /* Now, check to see if the section is an overlay. */
-      bfdsec = sec->the_bfd_section;
-      if (!section_is_overlay (bfdsec))
+      if (!section_is_overlay (sec))
 	continue;		/* not an overlay section */
 
       /* Mark the overlay as "mapped" */
@@ -3616,11 +3578,7 @@ the 'overlay manual' command."));
       /* Next, make a pass and unmap any sections that are
          overlapped by this new section: */
       ALL_OBJSECTIONS (objfile2, sec2)
-	if (sec2->ovly_mapped
-            && sec != sec2
-            && sec->the_bfd_section != sec2->the_bfd_section
-            && sections_overlap (sec->the_bfd_section,
-                                 sec2->the_bfd_section))
+	if (sec2->ovly_mapped && sec != sec2 && sections_overlap (sec, sec2))
 	{
 	  if (info_verbose)
 	    printf_unfiltered (_("Note: section %s unmapped by overlap\n"),
@@ -3960,7 +3918,7 @@ simple_overlay_update (struct obj_section *osect)
 
   /* Now may as well update all sections, even if only one was requested. */
   ALL_OBJSECTIONS (objfile, osect)
-    if (section_is_overlay (osect->the_bfd_section))
+    if (section_is_overlay (osect))
     {
       int i, size;
       bfd *obfd = osect->objfile->obfd;

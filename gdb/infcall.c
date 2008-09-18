@@ -35,6 +35,7 @@
 #include "infcall.h"
 #include "dummy-frame.h"
 #include "ada-lang.h"
+#include "gdbthread.h"
 
 /* NOTE: cagney/2003-04-16: What's the future of this code?
 
@@ -263,12 +264,13 @@ find_function_addr (struct value *function, struct type **retval_type)
 }
 
 /* Call breakpoint_auto_delete on the current contents of the bpstat
-   pointed to by arg (which is really a bpstat *).  */
+   of the current thread.  */
 
 static void
 breakpoint_auto_delete_contents (void *arg)
 {
-  breakpoint_auto_delete (*(bpstat *) arg);
+  if (!ptid_equal (inferior_ptid, null_ptid))
+    breakpoint_auto_delete (inferior_thread ()->stop_bpstat);
 }
 
 static CORE_ADDR
@@ -708,14 +710,15 @@ call_function_by_hand (struct value *function, int nargs, struct value **args)
     struct cleanup *old_cleanups = make_cleanup (null_cleanup, 0);
     struct cleanup *old_cleanups2;
     int saved_async = 0;
+    struct thread_info *tp = inferior_thread ();
 
     /* If all error()s out of proceed ended up calling normal_stop
        (and perhaps they should; it already does in the special case
        of error out of resume()), then we wouldn't need this.  */
-    make_cleanup (breakpoint_auto_delete_contents, &stop_bpstat);
+    make_cleanup (breakpoint_auto_delete_contents, NULL);
 
     disable_watchpoints_before_interactive_call_start ();
-    proceed_to_finish = 1;	/* We want stop_registers, please... */
+    tp->proceed_to_finish = 1;	/* We want stop_registers, please... */
 
     if (target_can_async_p ())
       saved_async = target_async_mask (0);

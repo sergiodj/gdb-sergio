@@ -71,7 +71,7 @@ adjust_type_signedness (struct type *type)
 {
   if (type != NULL && TYPE_CODE (type) == TYPE_CODE_RANGE
       && TYPE_LOW_BOUND (type) >= 0)
-    TYPE_FLAGS (type) |= TYPE_FLAG_UNSIGNED;
+    TYPE_UNSIGNED (type) = 1;
 }
 
 /* Assuming TYPE is a simple array type, prints its lower bound on STREAM,
@@ -112,6 +112,10 @@ print_optional_low_bound (struct ui_file *stream, struct type *type)
 
   switch (TYPE_CODE (index_type))
     {
+    case TYPE_CODE_BOOL:
+      if (low_bound == 0)
+	return 0;
+      break;
     case TYPE_CODE_ENUM:
       if (low_bound == TYPE_FIELD_BITPOS (index_type, 0))
 	return 0;

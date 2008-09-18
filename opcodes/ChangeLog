@@ -1,3 +1,87 @@
+2008-08-28  Jan Beulich  <jbeulich@novell.com>
+
+	* i386-dis.c (dis386): Adjust far return mnemonics.
+	* i386-opc.tbl: Add retf.
+	* i386-tbl.h: Re-generate.
+
+2008-08-28  Jan Beulich  <jbeulich@novell.com>
+
+	* i386-dis.c (dis386_twobyte): Adjust cmovXX mnemonics.
+
+2008-08-28  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* ia64-dis.c (print_insn_ia64): Handle cr.iib0 and cr.iib1.
+	* ia64-gen.c (lookup_specifier): Likewise.
+
+	* ia64-ic.tbl: Add support for cr.iib0 and cr.iib1.
+	* ia64-raw.tbl: Likewise.
+	* ia64-waw.tbl: Likewise.
+	* ia64-asmtab.c: Regenerated.
+
+2008-08-27  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* i386-opc.tbl: Correct fidivr operand size.
+
+	* i386-tbl.h: Regenerated.
+
+2008-08-24  Alan Modra  <amodra@bigpond.net.au>
+
+	* configure.in: Update a number of obsolete autoconf macros.
+	* aclocal.m4: Regenerate.
+
+2008-08-20  H.J. Lu  <hongjiu.lu@intel.com>
+
+	AVX Programming Reference (August, 2008)
+	* i386-dis.c (PREFIX_VEX_38DB): New.
+	(PREFIX_VEX_38DC): Likewise.
+	(PREFIX_VEX_38DD): Likewise.
+	(PREFIX_VEX_38DE): Likewise.
+	(PREFIX_VEX_38DF): Likewise.
+	(PREFIX_VEX_3ADF): Likewise.
+	(VEX_LEN_38DB_P_2): Likewise.
+	(VEX_LEN_38DC_P_2): Likewise.
+	(VEX_LEN_38DD_P_2): Likewise.
+	(VEX_LEN_38DE_P_2): Likewise.
+	(VEX_LEN_38DF_P_2): Likewise.
+	(VEX_LEN_3ADF_P_2): Likewise.
+	(PREFIX_VEX_3A04): Updated.
+	(VEX_LEN_3A06_P_2): Likewise.
+	(prefix_table): Add PREFIX_VEX_38DB, PREFIX_VEX_38DC,
+	PREFIX_VEX_38DD, PREFIX_VEX_38DE and PREFIX_VEX_3ADF.
+	(x86_64_table): Likewise.
+	(vex_len_table): Add VEX_LEN_38DB_P_2, VEX_LEN_38DC_P_2,
+	VEX_LEN_38DD_P_2, VEX_LEN_38DE_P_2, VEX_LEN_38DF_P_2 and
+	VEX_LEN_3ADF_P_2.
+
+	* i386-opc.tbl: Add AES + AVX instructions.
+	* i386-init.h: Regenerated.
+	* i386-tbl.h: Likewise.
+
+2008-08-15  Andreas Krebbel  <Andreas.Krebbel@de.ibm.com>
+
+	* s390-opc.c (INSTR_RRF_FFRU, MASK_RRF_FFRU): New instruction format.
+	* s390-opc.txt (lxr, rrdtr, rrxtr): Fix instruction format.
+
+2008-08-15  Alan Modra  <amodra@bigpond.net.au>
+
+	PR 6526
+	* configure.in: Invoke AC_USE_SYSTEM_EXTENSIONS.
+	* Makefile.in: Regenerate.
+	* aclocal.m4: Regenerate.
+	* config.in: Regenerate.
+	* configure: Regenerate.
+
+2008-08-14  Sebastian Huber  <sebastian.huber@embedded-brains.de>
+
+	PR 6825
+	* ppc-opc.c (powerpc_opcodes): Enable rfci, mfpmr, mtpmr for e300.
+
+2008-08-12  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* i386-opc.tbl: Add syscall and sysret for Cpu64.
+
+	* i386-tbl.h: Regenerated.
+
 2008-08-04  Alan Modra  <amodra@bigpond.net.au>
 
 	* Makefile.am (POTFILES.in): Set LC_ALL=C.

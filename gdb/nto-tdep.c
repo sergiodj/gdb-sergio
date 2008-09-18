@@ -107,14 +107,14 @@ nto_find_and_open_solib (char *solib, unsigned o_flags, char **temp_pathname)
 #define PATH_FMT "%s/lib:%s/usr/lib:%s/usr/photon/lib:%s/usr/photon/dll:%s/lib/dll"
 
   nto_root = nto_target ();
-  if (strcmp (gdbarch_bfd_arch_info (current_gdbarch)->arch_name, "i386") == 0)
+  if (strcmp (gdbarch_bfd_arch_info (target_gdbarch)->arch_name, "i386") == 0)
     {
       arch = "x86";
       endian = "";
     }
-  else if (strcmp (gdbarch_bfd_arch_info (current_gdbarch)->arch_name,
+  else if (strcmp (gdbarch_bfd_arch_info (target_gdbarch)->arch_name,
 		   "rs6000") == 0
-	   || strcmp (gdbarch_bfd_arch_info (current_gdbarch)->arch_name,
+	   || strcmp (gdbarch_bfd_arch_info (target_gdbarch)->arch_name,
 		   "powerpc") == 0)
     {
       arch = "ppc";
@@ -122,8 +122,8 @@ nto_find_and_open_solib (char *solib, unsigned o_flags, char **temp_pathname)
     }
   else
     {
-      arch = gdbarch_bfd_arch_info (current_gdbarch)->arch_name;
-      endian = gdbarch_byte_order (current_gdbarch)
+      arch = gdbarch_bfd_arch_info (target_gdbarch)->arch_name;
+      endian = gdbarch_byte_order (target_gdbarch)
 	       == BFD_ENDIAN_BIG ? "be" : "le";
     }
 
@@ -169,14 +169,14 @@ nto_init_solib_absolute_prefix (void)
   const char *arch;
 
   nto_root = nto_target ();
-  if (strcmp (gdbarch_bfd_arch_info (current_gdbarch)->arch_name, "i386") == 0)
+  if (strcmp (gdbarch_bfd_arch_info (target_gdbarch)->arch_name, "i386") == 0)
     {
       arch = "x86";
       endian = "";
     }
-  else if (strcmp (gdbarch_bfd_arch_info (current_gdbarch)->arch_name,
+  else if (strcmp (gdbarch_bfd_arch_info (target_gdbarch)->arch_name,
 		   "rs6000") == 0
-	   || strcmp (gdbarch_bfd_arch_info (current_gdbarch)->arch_name,
+	   || strcmp (gdbarch_bfd_arch_info (target_gdbarch)->arch_name,
 		   "powerpc") == 0)
     {
       arch = "ppc";
@@ -184,8 +184,8 @@ nto_init_solib_absolute_prefix (void)
     }
   else
     {
-      arch = gdbarch_bfd_arch_info (current_gdbarch)->arch_name;
-      endian = gdbarch_byte_order (current_gdbarch)
+      arch = gdbarch_bfd_arch_info (target_gdbarch)->arch_name;
+      endian = gdbarch_byte_order (target_gdbarch)
 	       == BFD_ENDIAN_BIG ? "be" : "le";
     }
 
@@ -253,32 +253,50 @@ nto_parse_redirection (char *pargv[], const char **pin, const char **pout,
    solib-svr4.c to support nto_relocate_section_addresses
    which is different from the svr4 version.  */
 
+/* Link map info to include in an allocated so_list entry */
+
 struct lm_info
-{
-  /* Pointer to copy of link map from inferior.  The type is char *
-     rather than void *, so that we may use byte offsets to find the
-     various fields without the need for a cast.  */
-  char *lm;
-};
+  {
+    /* Pointer to copy of link map from inferior.  The type is char *
+       rather than void *, so that we may use byte offsets to find the
+       various fields without the need for a cast.  */
+    gdb_byte *lm;
+
+    /* Amount by which addresses in the binary should be relocated to
+       match the inferior.  This could most often be taken directly
+       from lm, but when prelinking is involved and the prelink base
+       address changes, we may need a different offset, we want to
+       warn about the difference and compute it only once.  */
+    CORE_ADDR l_addr;
+
+    /* The target location of lm.  */
+    CORE_ADDR lm_addr;
+  };
+
 
 static CORE_ADDR
 LM_ADDR (struct so_list *so)
 {
-  struct link_map_offsets *lmo = nto_fetch_link_map_offsets ();
+  if (so->lm_info->l_addr == (CORE_ADDR)-1)
+    {
+      struct link_map_offsets *lmo = nto_fetch_link_map_offsets ();
 
-  return extract_typed_address (so->lm_info->lm + lmo->l_addr_offset,
-                                builtin_type_void_data_ptr);
+      so->lm_info->l_addr =
+	    extract_typed_address (so->lm_info->lm + lmo->l_addr_offset,
+				   builtin_type_void_data_ptr);
+    }
+  return so->lm_info->l_addr;
 }
 
 static CORE_ADDR
 nto_truncate_ptr (CORE_ADDR addr)
 {
-  if (gdbarch_ptr_bit (current_gdbarch) == sizeof (CORE_ADDR) * 8)
+  if (gdbarch_ptr_bit (target_gdbarch) == sizeof (CORE_ADDR) * 8)
     /* We don't need to truncate anything, and the bit twiddling below
        will fail due to overflow problems.  */
     return addr;
   else
-    return addr & (((CORE_ADDR) 1 << gdbarch_ptr_bit (current_gdbarch)) - 1);
+    return addr & (((CORE_ADDR) 1 << gdbarch_ptr_bit (target_gdbarch)) - 1);
 }
 
 Elf_Internal_Phdr *

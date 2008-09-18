@@ -348,8 +348,10 @@ print_objfile_section_info (bfd *abfd,
       || match_substring (string, name)
       || match_bfd_flags (string, flags))
     {
-      maint_print_section_info (name, flags, asect->addr, asect->endaddr, 
-			  asect->the_bfd_section->filepos);
+      maint_print_section_info (name, flags,
+				obj_section_addr (asect),
+				obj_section_endaddr (asect),
+				asect->the_bfd_section->filepos);
     }
 }
 
@@ -441,7 +443,7 @@ static void
 maintenance_translate_address (char *arg, int from_tty)
 {
   CORE_ADDR address;
-  asection *sect;
+  struct obj_section *sect;
   char *p;
   struct minimal_symbol *sym;
   struct objfile *objfile;
@@ -462,10 +464,9 @@ maintenance_translate_address (char *arg, int from_tty)
       while (isspace (*p))
 	p++;			/* Skip whitespace */
 
-      ALL_OBJFILES (objfile)
+      ALL_OBJSECTIONS (objfile, sect)
       {
-	sect = bfd_get_section_by_name (objfile->obfd, arg);
-	if (sect != NULL)
+	if (strcmp (sect->the_bfd_section->name, arg) == 0)
 	  break;
       }
 
@@ -483,9 +484,10 @@ maintenance_translate_address (char *arg, int from_tty)
   if (sym)
     printf_filtered ("%s+%s\n",
 		     SYMBOL_PRINT_NAME (sym),
-		     paddr_u (address - SYMBOL_VALUE_ADDRESS (sym)));
+		     pulongest (address - SYMBOL_VALUE_ADDRESS (sym)));
   else if (sect)
-    printf_filtered (_("no symbol at %s:0x%s\n"), sect->name, paddr (address));
+    printf_filtered (_("no symbol at %s:0x%s\n"),
+		     sect->the_bfd_section->name, paddr (address));
   else
     printf_filtered (_("no symbol at 0x%s\n"), paddr (address));
 
@@ -848,14 +850,14 @@ Takes an optional file parameter."),
 
   add_cmd ("deprecate", class_maintenance, maintenance_deprecate, _("\
 Deprecate a command.  Note that this is just in here so the \n\
-testsuite can check the comamnd deprecator. You probably shouldn't use this,\n\
+testsuite can check the command deprecator. You probably shouldn't use this,\n\
 rather you should use the C function deprecate_cmd().  If you decide you \n\
 want to use it: maintenance deprecate 'commandname' \"replacement\". The \n\
 replacement is optional."), &maintenancelist);
 
   add_cmd ("undeprecate", class_maintenance, maintenance_undeprecate, _("\
 Undeprecate a command.  Note that this is just in here so the \n\
-testsuite can check the comamnd deprecator. You probably shouldn't use this,\n\
+testsuite can check the command deprecator. You probably shouldn't use this,\n\
 If you decide you want to use it: maintenance undeprecate 'commandname'"),
 	   &maintenancelist);
 

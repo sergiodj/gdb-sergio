@@ -132,8 +132,6 @@ extern void clear_proceed_status (void);
 
 extern void proceed (CORE_ADDR, enum target_signal, int);
 
-extern ptid_t context_switch_to (ptid_t ptid);
-
 /* When set, stop the 'step' command if we enter a function which has
    no line number information.  The normal behavior is that we step
    over such function.  */
@@ -279,26 +277,14 @@ extern void interrupt_target_command (char *args, int from_tty);
 
 extern void interrupt_target_1 (int all_threads);
 
-/* Last signal that the inferior received (why it stopped).  */
-
-extern enum target_signal stop_signal;
-
 /* Address at which inferior stopped.  */
 
 extern CORE_ADDR stop_pc;
-
-/* Chain containing status of breakpoint(s) that we have stopped at.  */
-
-extern bpstat stop_bpstat;
 
 /* Flag indicating that a command has proceeded the inferior past the
    current breakpoint.  */
 
 extern int breakpoint_proceeded;
-
-/* Nonzero if stopped due to a step command.  */
-
-extern int stop_step;
 
 /* Nonzero if stopped due to completion of a stack dummy routine.  */
 
@@ -309,24 +295,6 @@ extern int stop_stack_dummy;
 
 extern int stopped_by_random_signal;
 
-/* Range to single step within.
-   If this is nonzero, respond to a single-step signal
-   by continuing to step if the pc is in this range.
-
-   If step_range_start and step_range_end are both 1, it means to step for
-   a single instruction (FIXME: it might clean up wait_for_inferior in a
-   minor way if this were changed to the address of the instruction and
-   that address plus one.  But maybe not.).  */
-
-extern CORE_ADDR step_range_start;	/* Inclusive */
-extern CORE_ADDR step_range_end;	/* Exclusive */
-
-/* Stack frame address as of when stepping command was issued.
-   This is how we know when we step into a subroutine call,
-   and how to set the frame for the breakpoint used to step out.  */
-
-extern struct frame_id step_frame_id;
-
 /* 1 means step over all subroutine calls.
    -1 means step over calls to undebuggable functions.  */
 
@@ -336,14 +304,6 @@ enum step_over_calls_kind
     STEP_OVER_ALL,
     STEP_OVER_UNDEBUGGABLE
   };
-
-extern enum step_over_calls_kind step_over_calls;
-
-/* If stepping, nonzero means step count is > 1
-   so don't print frame next time inferior stops
-   if it stops due to stepping.  */
-
-extern int step_multi;
 
 /* Anything but NO_STOP_QUIETLY means we expect a trap and the caller
    will handle it themselves.  STOP_QUIETLY is used when running in

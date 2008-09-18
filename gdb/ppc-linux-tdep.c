@@ -41,8 +41,10 @@
 
 #include "features/rs6000/powerpc-32l.c"
 #include "features/rs6000/powerpc-altivec32l.c"
+#include "features/rs6000/powerpc-vsx32l.c"
 #include "features/rs6000/powerpc-64l.c"
 #include "features/rs6000/powerpc-altivec64l.c"
+#include "features/rs6000/powerpc-vsx64l.c"
 #include "features/rs6000/powerpc-e500l.c"
 
 /* Total number of syscalls */
@@ -625,11 +627,27 @@ ppc64_standard_linkage1_target (struct frame_info *frame,
   return ppc64_desc_entry_point (desc);
 }
 
-static struct core_regset_section ppc_linux_regset_sections[] =
+static struct core_regset_section ppc_linux_vsx_regset_sections[] =
 {
   { ".reg", 268 },
   { ".reg2", 264 },
   { ".reg-ppc-vmx", 544 },
+  { ".reg-ppc-vsx", 256 },
+  { NULL, 0}
+};
+
+static struct core_regset_section ppc_linux_vmx_regset_sections[] =
+{
+  { ".reg", 268 },
+  { ".reg2", 264 },
+  { ".reg-ppc-vmx", 544 },
+  { NULL, 0}
+};
+
+static struct core_regset_section ppc_linux_fp_regset_sections[] =
+{
+  { ".reg", 268 },
+  { ".reg2", 264 },
   { NULL, 0}
 };
 
@@ -737,7 +755,36 @@ ppc64_linux_convert_from_func_ptr_addr (struct gdbarch *gdbarch,
 
   /* Check if ADDR points to a function descriptor.  */
   if (s && strcmp (s->the_bfd_section->name, ".opd") == 0)
-    return get_target_memory_unsigned (targ, addr, 8);
+    {
+      /* There may be relocations that need to be applied to the .opd 
+	 section.  Unfortunately, this function may be called at a time
+	 where these relocations have not yet been performed -- this can
+	 happen for example shortly after a library has been loaded with
+	 dlopen, but ld.so has not yet applied the relocations.
+
+	 To cope with both the case where the relocation has been applied,
+	 and the case where it has not yet been applied, we do *not* read
+	 the (maybe) relocated value from target memory, but we instead
+	 read the non-relocated value from the BFD, and apply the relocation
+	 offset manually.
+
+	 This makes the assumption that all .opd entries are always relocated
+	 by the same offset the section itself was relocated.  This should
+	 always be the case for GNU/Linux executables and shared libraries.
+	 Note that other kind of object files (e.g. those added via
+	 add-symbol-files) will currently never end up here anyway, as this
+	 function accesses *target* sections only; only the main exec and
+	 shared libraries are ever added to the target.  */
+
+      gdb_byte buf[8];
+      int res;
+
+      res = bfd_get_section_contents (s->bfd, s->the_bfd_section,
+				      &buf, addr - s->addr, 8);
+      if (res != 0)
+	return extract_unsigned_integer (buf, 8)
+		- bfd_section_vma (s->bfd, s->the_bfd_section) + s->addr;
+   }
 
   return addr;
 }
@@ -877,6 +924,13 @@ static const struct regset ppc32_linux_vrregset = {
   NULL
 };
 
+static const struct regset ppc32_linux_vsxregset = {
+  &ppc32_linux_reg_offsets,
+  ppc_supply_vsxregset,
+  ppc_collect_vsxregset,
+  NULL
+};
+
 const struct regset *
 ppc_linux_gregset (int wordsize)
 {
@@ -905,6 +959,8 @@ ppc_linux_regset_from_core_section (struct gdbarch *core_arch,
     return &ppc32_linux_fpregset;
   if (strcmp (sect_name, ".reg-ppc-vmx") == 0)
     return &ppc32_linux_vrregset;
+  if (strcmp (sect_name, ".reg-ppc-vsx") == 0)
+    return &ppc32_linux_vsxregset;
   return NULL;
 }
 
@@ -1208,6 +1264,7 @@ ppc_linux_core_read_description (struct gdbarch *gdbarch,
 				 bfd *abfd)
 {
   asection *altivec = bfd_get_section_by_name (abfd, ".reg-ppc-vmx");
+  asection *vsx = bfd_get_section_by_name (abfd, ".reg-ppc-vsx");
   asection *section = bfd_get_section_by_name (abfd, ".reg");
   if (! section)
     return NULL;
@@ -1215,10 +1272,20 @@ ppc_linux_core_read_description (struct gdbarch *gdbarch,
   switch (bfd_section_size (abfd, section))
     {
     case 48 * 4:
-      return altivec? tdesc_powerpc_altivec32l : tdesc_powerpc_32l;
+      if (vsx)
+	return tdesc_powerpc_vsx32l;
+      else if (altivec)
+	return tdesc_powerpc_altivec32l;
+      else
+	return tdesc_powerpc_32l;
 
     case 48 * 8:
-      return altivec? tdesc_powerpc_altivec64l : tdesc_powerpc_64l;
+      if (vsx)
+	return tdesc_powerpc_vsx64l;
+      else if (altivec)
+	return tdesc_powerpc_altivec64l;
+      else
+	return tdesc_powerpc_64l;
 
     default:
       return NULL;
@@ -1295,7 +1362,14 @@ ppc_linux_init_abi (struct gdbarch_info info,
   set_gdbarch_core_read_description (gdbarch, ppc_linux_core_read_description);
 
   /* Supported register sections.  */
-  set_gdbarch_core_regset_sections (gdbarch, ppc_linux_regset_sections);
+  if (tdesc_find_feature (info.target_desc,
+			  "org.gnu.gdb.power.vsx"))
+    set_gdbarch_core_regset_sections (gdbarch, ppc_linux_vsx_regset_sections);
+  else if (tdesc_find_feature (info.target_desc,
+			       "org.gnu.gdb.power.altivec"))
+    set_gdbarch_core_regset_sections (gdbarch, ppc_linux_vmx_regset_sections);
+  else
+    set_gdbarch_core_regset_sections (gdbarch, ppc_linux_fp_regset_sections);
 
   /* Enable TLS support.  */
   set_gdbarch_fetch_tls_load_module_address (gdbarch,
@@ -1340,7 +1414,9 @@ _initialize_ppc_linux_tdep (void)
   /* Initialize the Linux target descriptions.  */
   initialize_tdesc_powerpc_32l ();
   initialize_tdesc_powerpc_altivec32l ();
+  initialize_tdesc_powerpc_vsx32l ();
   initialize_tdesc_powerpc_64l ();
   initialize_tdesc_powerpc_altivec64l ();
+  initialize_tdesc_powerpc_vsx64l ();
   initialize_tdesc_powerpc_e500l ();
 }

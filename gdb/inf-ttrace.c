@@ -33,6 +33,7 @@
 #include "gdb_string.h"
 #include <sys/mman.h>
 #include <sys/ttrace.h>
+#include <signal.h>
 
 #include "inf-child.h"
 #include "inf-ttrace.h"
@@ -411,6 +412,7 @@ inf_ttrace_follow_fork (struct target_ops *ops, int follow_child)
   pid_t pid, fpid;
   lwpid_t lwpid, flwpid;
   ttstate_t tts;
+  struct thread_info *last_tp = NULL;
 
   /* FIXME: kettenis/20050720: This stuff should really be passed as
      an argument by our caller.  */
@@ -424,6 +426,7 @@ inf_ttrace_follow_fork (struct target_ops *ops, int follow_child)
 
     pid = ptid_get_pid (ptid);
     lwpid = ptid_get_lwp (ptid);
+    last_tp = find_thread_pid (ptid);
   }
 
   /* Get all important details that core GDB doesn't (and shouldn't)
@@ -451,6 +454,18 @@ inf_ttrace_follow_fork (struct target_ops *ops, int follow_child)
 
   if (follow_child)
     {
+      /* Copy user stepping state to the new inferior thread.  */
+      struct breakpoint *step_resume_breakpoint	= last_tp->step_resume_breakpoint;
+      CORE_ADDR step_range_start = last_tp->step_range_start;
+      CORE_ADDR step_range_end = last_tp->step_range_end;
+      struct frame_id step_frame_id = last_tp->step_frame_id;
+
+      struct thread_info *tp;
+
+      /* Otherwise, deleting the parent would get rid of this
+	 breakpoint.  */
+      last_tp->step_resume_breakpoint = NULL;
+
       inferior_ptid = ptid_build (fpid, flwpid, 0);
       detach_breakpoints (pid);
 
@@ -513,9 +528,26 @@ Detaching after fork from child process %ld.\n"), (long)fpid);
 
   if (follow_child)
     {
+      struct thread_info *ti;
+
       /* The child will start out single-threaded.  */
-      inf_ttrace_num_lwps = 0;
+      inf_ttrace_num_lwps = 1;
       inf_ttrace_num_lwps_in_syscall = 0;
+
+      /* Delete parent.  */
+      delete_thread_silent (ptid_build (pid, lwpid, 0));
+
+      /* Add child.  inferior_ptid was already set above.  */
+      ti = add_thread_silent (inferior_ptid);
+      ti->private =
+	xmalloc (sizeof (struct inf_ttrace_private_thread_info));
+      memset (ti->private, 0,
+	      sizeof (struct inf_ttrace_private_thread_info));
+
+      ti->step_resume_breakpoint = step_resume_breakpoint;
+      ti->step_range_start = step_range_start;
+      ti->step_range_end = step_range_end;
+      ti->step_frame_id = step_frame_id;
 
       /* Reset breakpoints in the child as appropriate.  */
       follow_inferior_reset_breakpoints ();
@@ -721,8 +753,13 @@ inf_ttrace_attach (char *args, int from_tty)
 	      (uintptr_t)&tte, sizeof tte, 0) == -1)
     perror_with_name (("ttrace"));
 
-  inferior_ptid = pid_to_ptid (pid);
   push_target (ttrace_ops_hack);
+
+  /* We'll bump inf_ttrace_num_lwps up and add the private data to the
+     thread as soon as we get to inf_ttrace_wait.  At this point, we
+     don't have lwpid info yet.  */
+  inferior_ptid = pid_to_ptid (pid);
+  add_thread_silent (inferior_ptid);
 }
 
 static void
@@ -784,52 +821,85 @@ inf_ttrace_kill (void)
   target_mourn_inferior ();
 }
 
+/* Check is a dying thread is dead by now, and delete it from GDBs
+   thread list if so.  */
 static int
-inf_ttrace_resume_callback (struct thread_info *info, void *arg)
+inf_ttrace_delete_dead_threads_callback (struct thread_info *info, void *arg)
 {
-  if (!ptid_equal (info->ptid, inferior_ptid))
-    {
-      pid_t pid = ptid_get_pid (info->ptid);
-      lwpid_t lwpid = ptid_get_lwp (info->ptid);
+  lwpid_t lwpid;
+  struct inf_ttrace_private_thread_info *p;
 
-      if (ttrace (TT_LWP_CONTINUE, pid, lwpid, TT_NOPC, 0, 0) == -1)
-	perror_with_name (("ttrace"));
-    }
+  if (is_exited (info->ptid))
+    return 0;
+
+  lwpid = ptid_get_lwp (info->ptid);
+  p = (struct inf_ttrace_private_thread_info *) info->private;
+
+  /* Check if an lwp that was dying is still there or not.  */
+  if (p->dying && (kill (lwpid, 0) == -1))
+    /* It's gone now.  */
+    delete_thread (info->ptid);
 
   return 0;
 }
 
-static int
-inf_ttrace_delete_dying_threads_callback (struct thread_info *info, void *arg)
+/* Resume the lwp pointed to by INFO, with REQUEST, and pass it signal
+   SIG.  */
+
+static void
+inf_ttrace_resume_lwp (struct thread_info *info, ttreq_t request, int sig)
 {
-  if (((struct inf_ttrace_private_thread_info *)info->private)->dying == 1)
-    delete_thread (info->ptid);
+  pid_t pid = ptid_get_pid (info->ptid);
+  lwpid_t lwpid = ptid_get_lwp (info->ptid);
+
+  if (ttrace (request, pid, lwpid, TT_NOPC, sig, 0) == -1)
+    {
+      struct inf_ttrace_private_thread_info *p
+	= (struct inf_ttrace_private_thread_info *) info->private;
+      if (p->dying && errno == EPROTO)
+	/* This is expected, it means the dying lwp is really gone
+	   by now.  If ttrace had an event to inform the debugger
+	   the lwp is really gone, this wouldn't be needed.  */
+	delete_thread (info->ptid);
+      else
+	/* This was really unexpected.  */
+	perror_with_name (("ttrace"));
+    }
+}
+
+/* Callback for iterate_over_threads.  */
+
+static int
+inf_ttrace_resume_callback (struct thread_info *info, void *arg)
+{
+  if (!ptid_equal (info->ptid, inferior_ptid) && !is_exited (info->ptid))
+    inf_ttrace_resume_lwp (info, TT_LWP_CONTINUE, 0);
+
   return 0;
 }
 
 static void
 inf_ttrace_resume (ptid_t ptid, int step, enum target_signal signal)
 {
-  pid_t pid = ptid_get_pid (ptid);
-  lwpid_t lwpid = ptid_get_lwp (ptid);
+  int resume_all;
   ttreq_t request = step ? TT_LWP_SINGLE : TT_LWP_CONTINUE;
   int sig = target_signal_to_host (signal);
+  struct thread_info *info;
 
-  if (pid == -1)
-    {
-      pid = ptid_get_pid (inferior_ptid);
-      lwpid = ptid_get_lwp (inferior_ptid);
-    }
+  /* A specific PTID means `step only this process id'.  */
+  resume_all = (ptid_equal (ptid, minus_one_ptid));
 
-  if (ttrace (request, pid, lwpid, TT_NOPC, sig, 0) == -1)
-    perror_with_name (("ttrace"));
+  /* If resuming all threads, it's the current thread that should be
+     handled specially.  */
+  if (resume_all)
+    ptid = inferior_ptid;
 
-  if (ptid_equal (ptid, minus_one_ptid) && inf_ttrace_num_lwps > 0)
-    {
-      /* Let all the other threads run too.  */
-      iterate_over_threads (inf_ttrace_resume_callback, NULL);
-      iterate_over_threads (inf_ttrace_delete_dying_threads_callback, NULL);
-    }
+  info = thread_find_pid (ptid);
+  inf_ttrace_resume_lwp (info, request, sig);
+
+  if (resume_all)
+    /* Let all the other threads run too.  */
+    iterate_over_threads (inf_ttrace_resume_callback, NULL);
 }
 
 static ptid_t
@@ -885,6 +955,30 @@ inf_ttrace_wait (ptid_t ptid, struct target_waitstatus *ourstatus)
     }
 
   ptid = ptid_build (tts.tts_pid, tts.tts_lwpid, 0);
+
+  if (inf_ttrace_num_lwps == 0)
+    {
+      struct thread_info *ti;
+
+      inf_ttrace_num_lwps = 1;
+
+      /* This is the earliest we hear about the lwp member of
+	 INFERIOR_PTID, after an attach or fork_inferior.  */
+      gdb_assert (ptid_get_lwp (inferior_ptid) == 0);
+
+      /* We haven't set the private member on the main thread yet.  Do
+	 it now.  */
+      ti = find_thread_pid (inferior_ptid);
+      gdb_assert (ti != NULL && ti->private == NULL);
+      ti->private =
+	xmalloc (sizeof (struct inf_ttrace_private_thread_info));
+      memset (ti->private, 0,
+	      sizeof (struct inf_ttrace_private_thread_info));
+
+      /* Notify the core that this ptid changed.  This changes
+	 inferior_ptid as well.  */
+      thread_change_ptid (inferior_ptid, ptid);
+    }
 
   switch (tts.tts_event)
     {
@@ -958,17 +1052,6 @@ inf_ttrace_wait (ptid_t ptid, struct target_waitstatus *ourstatus)
     case TTEVT_LWP_CREATE:
       lwpid = tts.tts_u.tts_thread.tts_target_lwpid;
       ptid = ptid_build (tts.tts_pid, lwpid, 0);
-      if (inf_ttrace_num_lwps == 0)
-	{
-	  /* Now that we're going to be multi-threaded, add the
-	     original thread to the list first.  */
-	  ti = add_thread (ptid_build (tts.tts_pid, tts.tts_lwpid, 0));
-	  ti->private =
-	    xmalloc (sizeof (struct inf_ttrace_private_thread_info));
-	  memset (ti->private, 0,
-		  sizeof (struct inf_ttrace_private_thread_info));
-	  inf_ttrace_num_lwps++;
-	}
       ti = add_thread (ptid);
       ti->private =
 	xmalloc (sizeof (struct inf_ttrace_private_thread_info));
@@ -976,7 +1059,12 @@ inf_ttrace_wait (ptid_t ptid, struct target_waitstatus *ourstatus)
 	      sizeof (struct inf_ttrace_private_thread_info));
       inf_ttrace_num_lwps++;
       ptid = ptid_build (tts.tts_pid, tts.tts_lwpid, 0);
-      break;
+      /* Let the lwp_create-caller thread continue.  */
+      ttrace (TT_LWP_CONTINUE, ptid_get_pid (ptid),
+              ptid_get_lwp (ptid), TT_NOPC, 0, 0);
+      /* Return without stopping the whole process.  */
+      ourstatus->kind = TARGET_WAITKIND_IGNORE;
+      return ptid;
 
     case TTEVT_LWP_EXIT:
       if (print_thread_events)
@@ -985,22 +1073,31 @@ inf_ttrace_wait (ptid_t ptid, struct target_waitstatus *ourstatus)
       gdb_assert (ti != NULL);
       ((struct inf_ttrace_private_thread_info *)ti->private)->dying = 1;
       inf_ttrace_num_lwps--;
+      /* Let the thread really exit.  */
       ttrace (TT_LWP_CONTINUE, ptid_get_pid (ptid),
               ptid_get_lwp (ptid), TT_NOPC, 0, 0);
-      /* If we don't return -1 here, core GDB will re-add the thread.  */
-      ptid = minus_one_ptid;
-      break;
+      /* Return without stopping the whole process.  */
+      ourstatus->kind = TARGET_WAITKIND_IGNORE;
+      return ptid;
 
     case TTEVT_LWP_TERMINATE:
       lwpid = tts.tts_u.tts_thread.tts_target_lwpid;
       ptid = ptid_build (tts.tts_pid, lwpid, 0);
-      printf_filtered(_("[%s has been terminated]\n"), target_pid_to_str (ptid));
+      if (print_thread_events)
+	printf_unfiltered(_("[%s has been terminated]\n")
+			  target_pid_to_str (ptid));
       ti = find_thread_pid (ptid);
       gdb_assert (ti != NULL);
       ((struct inf_ttrace_private_thread_info *)ti->private)->dying = 1;
       inf_ttrace_num_lwps--;
+
+      /* Resume the lwp_terminate-caller thread.  */
       ptid = ptid_build (tts.tts_pid, tts.tts_lwpid, 0);
-      break;
+      ttrace (TT_LWP_CONTINUE, ptid_get_pid (ptid),
+              ptid_get_lwp (ptid), TT_NOPC, 0, 0);
+      /* Return without stopping the whole process.  */
+      ourstatus->kind = TARGET_WAITKIND_IGNORE;
+      return ptid;
 
     case TTEVT_SIGNAL:
       ourstatus->kind = TARGET_WAITKIND_STOPPED;
@@ -1045,10 +1142,15 @@ inf_ttrace_wait (ptid_t ptid, struct target_waitstatus *ourstatus)
   if (ttrace (TT_PROC_STOP, tts.tts_pid, 0, 0, 0, 0) == -1)
     perror_with_name (("ttrace"));
 
-  /* HACK: Twiddle INFERIOR_PTID such that the initial thread of a
-     process isn't recognized as a new thread.  */
-  if (ptid_get_lwp (inferior_ptid) == 0)
-    inferior_ptid = ptid;
+  /* Now that the whole process is stopped, check if any dying thread
+     is really dead by now.  If a dying thread is still alive, it will
+     be stopped too, and will still show up in `info threads', tagged
+     with "(Exiting)".  We could make `info threads' prune dead
+     threads instead via inf_ttrace_thread_alive, but doing this here
+     has the advantage that a frontend is notificed sooner of thread
+     exits.  Note that a dying lwp is still alive, it still has to be
+     resumed, like any other lwp.  */
+  iterate_over_threads (inf_ttrace_delete_dead_threads_callback, NULL);
 
   return ptid;
 }
@@ -1120,26 +1222,38 @@ inf_ttrace_files_info (struct target_ops *ignore)
 static int
 inf_ttrace_thread_alive (ptid_t ptid)
 {
-  struct thread_info *ti;
-  ti = find_thread_pid (ptid);
-  return !(((struct inf_ttrace_private_thread_info *)ti->private)->dying);
+  return 1;
+}
+
+/* Return a string describing the state of the thread specified by
+   INFO.  */
+
+static char *
+inf_ttrace_extra_thread_info (struct thread_info *info)
+{
+  struct inf_ttrace_private_thread_info* private =
+    (struct inf_ttrace_private_thread_info *) info->private;
+
+  if (private != NULL && private->dying)
+    return "Exiting";
+
+  return NULL;
 }
 
 static char *
 inf_ttrace_pid_to_str (ptid_t ptid)
 {
-  if (inf_ttrace_num_lwps > 0)
-    {
-      pid_t pid = ptid_get_pid (ptid);
-      lwpid_t lwpid = ptid_get_lwp (ptid);
-      static char buf[128];
+  pid_t pid = ptid_get_pid (ptid);
+  lwpid_t lwpid = ptid_get_lwp (ptid);
+  static char buf[128];
 
-      xsnprintf (buf, sizeof buf, "process %ld, lwp %ld",
-		 (long)pid, (long)lwpid);
-      return buf;
-    }
-
-  return normal_pid_to_str (ptid);
+  if (lwpid == 0)
+    xsnprintf (buf, sizeof buf, "process %ld",
+	       (long) pid);
+  else
+    xsnprintf (buf, sizeof buf, "process %ld, lwp %ld",
+	       (long) pid, (long) lwpid);
+  return buf;
 }
 
 
@@ -1164,6 +1278,7 @@ inf_ttrace_target (void)
   t->to_follow_fork = inf_ttrace_follow_fork;
   t->to_mourn_inferior = inf_ttrace_mourn_inferior;
   t->to_thread_alive = inf_ttrace_thread_alive;
+  t->to_extra_thread_info = inf_ttrace_extra_thread_info;
   t->to_pid_to_str = inf_ttrace_pid_to_str;
   t->to_xfer_partial = inf_ttrace_xfer_partial;
 

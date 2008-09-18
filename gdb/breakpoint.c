@@ -59,9 +59,11 @@
 
 #include "mi/mi-common.h"
 
-/* Prototypes for local functions. */
+/* Arguments to pass as context to some catch command handlers.  */
+#define CATCH_PERMANENT ((void *) (uintptr_t) 0)
+#define CATCH_TEMPORARY ((void *) (uintptr_t) 1)
 
-static void catch_command_1 (char *, int, int);
+/* Prototypes for local functions. */
 
 static void enable_delete_command (char *, int);
 
@@ -102,7 +104,7 @@ static void breakpoint_adjustment_warning (CORE_ADDR, CORE_ADDR, int, int);
 static CORE_ADDR adjust_breakpoint_address (CORE_ADDR bpaddr,
                                             enum bptype bptype);
 
-static void describe_other_breakpoints (CORE_ADDR, asection *, int);
+static void describe_other_breakpoints (CORE_ADDR, struct obj_section *, int);
 
 static void breakpoints_info (char *, int);
 
@@ -166,8 +168,6 @@ static void stop_command (char *arg, int from_tty);
 static void stopin_command (char *arg, int from_tty);
 
 static void stopat_command (char *arg, int from_tty);
-
-static char *ep_find_event_name_end (char *arg);
 
 static char *ep_parse_optional_if_clause (char **arg);
 
@@ -249,18 +249,41 @@ Automatic usage of hardware breakpoints is %s.\n"),
 		    value);
 }
 
-/* If 1, gdb will keep breakpoints inserted even as inferior is stopped, 
-   and immediately insert any new breakpoints.  If 0, gdb will insert 
-   breakpoints into inferior only when resuming it, and will remove 
-   breakpoints upon stop.  */
-static int always_inserted_mode = 0;
-static void 
+/* If on, gdb will keep breakpoints inserted even as inferior is
+   stopped, and immediately insert any new breakpoints.  If off, gdb
+   will insert breakpoints into inferior only when resuming it, and
+   will remove breakpoints upon stop.  If auto, GDB will behave as ON
+   if in non-stop mode, and as OFF if all-stop mode.*/
+
+static const char always_inserted_auto[] = "auto";
+static const char always_inserted_on[] = "on";
+static const char always_inserted_off[] = "off";
+static const char *always_inserted_enums[] = {
+  always_inserted_auto,
+  always_inserted_off,
+  always_inserted_on,
+  NULL
+};
+static const char *always_inserted_mode = always_inserted_auto;
+static void
 show_always_inserted_mode (struct ui_file *file, int from_tty,
-			   struct cmd_list_element *c, const char *value)
+		     struct cmd_list_element *c, const char *value)
 {
-  fprintf_filtered (file, _("Always inserted breakpoint mode is %s.\n"), value);
+  if (always_inserted_mode == always_inserted_auto)
+    fprintf_filtered (file, _("\
+Always inserted breakpoint mode is %s (currently %s).\n"),
+		      value,
+		      breakpoints_always_inserted_mode () ? "on" : "off");
+  else
+    fprintf_filtered (file, _("Always inserted breakpoint mode is %s.\n"), value);
 }
 
+int
+breakpoints_always_inserted_mode (void)
+{
+  return (always_inserted_mode == always_inserted_on
+	  || (always_inserted_mode == always_inserted_auto && non_stop));
+}
 
 void _initialize_breakpoint (void);
 
@@ -656,7 +679,7 @@ commands_command (char *arg, int from_tty)
 	char *tmpbuf = xstrprintf ("Type commands for when breakpoint %d is hit, one per line.", 
 				 bnum);
 	struct cleanup *cleanups = make_cleanup (xfree, tmpbuf);
-	l = read_command_lines (tmpbuf, from_tty);
+	l = read_command_lines (tmpbuf, from_tty, 1);
 	do_cleanups (cleanups);
 	free_command_lines (&b->commands);
 	b->commands = l;
@@ -1270,7 +1293,7 @@ insert_breakpoints (void)
 
   update_global_location_list (1);
 
-  if (!always_inserted_mode && target_has_execution)
+  if (!breakpoints_always_inserted_mode () && target_has_execution)
     /* update_global_location_list does not insert breakpoints
        when always_inserted_mode is not enabled.  Explicitly
        insert them now.  */
@@ -1650,6 +1673,13 @@ remove_breakpoint (struct bp_location *b, insertion_state_t is)
 	      val = 0;
 	    }
 	}
+
+      /* In some cases, we might not be able to remove a breakpoint
+	 in a shared library that has already been removed, but we
+	 have not yet processed the shlib unload event.  */
+      if (val && solib_address (b->address))
+	val = 0;
+
       if (val)
 	return val;
       b->inserted = (is == mark_inserted);
@@ -1731,7 +1761,8 @@ breakpoint_init_inferior (enum inf_context context)
   struct bp_location *bpt;
 
   ALL_BP_LOCATIONS (bpt)
-    bpt->inserted = 0;
+    if (bpt->owner->enable_state != bp_permanent)
+      bpt->inserted = 0;
 
   ALL_BREAKPOINTS_SAFE (b, temp)
   {
@@ -2119,30 +2150,26 @@ cleanup_executing_breakpoints (void *ignore)
 /* Execute all the commands associated with all the breakpoints at this
    location.  Any of these commands could cause the process to proceed
    beyond this point, etc.  We look out for such changes by checking
-   the global "breakpoint_proceeded" after each command.  */
+   the global "breakpoint_proceeded" after each command.
 
-void
-bpstat_do_actions (bpstat *bsp)
+   Returns true if a breakpoint command resumed the inferior.  In that
+   case, it is the caller's responsibility to recall it again with the
+   bpstat of the current thread.  */
+
+static int
+bpstat_do_actions_1 (bpstat *bsp)
 {
   bpstat bs;
   struct cleanup *old_chain;
+  int again = 0;
 
   /* Avoid endless recursion if a `source' command is contained
      in bs->commands.  */
   if (executing_breakpoint_commands)
-    return;
+    return 0;
 
   executing_breakpoint_commands = 1;
   old_chain = make_cleanup (cleanup_executing_breakpoints, 0);
-
-top:
-  /* Note that (as of this writing), our callers all appear to
-     be passing us the address of global stop_bpstat.  And, if
-     our calls to execute_control_command cause the inferior to
-     proceed, that global (and hence, *bsp) will change.
-
-     We must be careful to not touch *bsp unless the inferior
-     has not proceeded. */
 
   /* This pointer will iterate over the list of bpstat's. */
   bs = *bsp;
@@ -2183,30 +2210,46 @@ top:
       if (breakpoint_proceeded)
 	{
 	  if (target_can_async_p ())
-	  /* If we are in async mode, then the target might
-	     be still running, not stopped at any breakpoint,
-	     so nothing for us to do here -- just return to
-	     the event loop.  */
-	    break;
+	    /* If we are in async mode, then the target might be still
+	       running, not stopped at any breakpoint, so nothing for
+	       us to do here -- just return to the event loop.  */
+	    ;
 	  else
 	    /* In sync mode, when execute_control_command returns
 	       we're already standing on the next breakpoint.
-	       Breakpoint commands for that stop were not run,
-	       since execute_command does not run breakpoint
-	       commands -- only command_line_handler does, but
-	       that one is not involved in execution of breakpoint
-	       commands.  So, we can now execute breakpoint commands.
-	       There's an implicit assumption that we're called with
-	       stop_bpstat, so our parameter is the new bpstat to
-	       handle.  
-	       It should be noted that making execute_command do
-	       bpstat actions is not an option -- in this case we'll
-	       have recursive invocation of bpstat for each breakpoint
-	       with a command, and can easily blow up GDB stack.  */
-	    goto top;
+	       Breakpoint commands for that stop were not run, since
+	       execute_command does not run breakpoint commands --
+	       only command_line_handler does, but that one is not
+	       involved in execution of breakpoint commands.  So, we
+	       can now execute breakpoint commands.  It should be
+	       noted that making execute_command do bpstat actions is
+	       not an option -- in this case we'll have recursive
+	       invocation of bpstat for each breakpoint with a
+	       command, and can easily blow up GDB stack.  Instead, we
+	       return true, which will trigger the caller to recall us
+	       with the new stop_bpstat.  */
+	    again = 1;
+	  break;
 	}
     }
   do_cleanups (old_chain);
+  return again;
+}
+
+void
+bpstat_do_actions (void)
+{
+  /* Do any commands attached to breakpoint we are stopped at.  */
+  while (!ptid_equal (inferior_ptid, null_ptid)
+	 && target_has_execution
+	 && !is_exited (inferior_ptid)
+	 && !is_executing (inferior_ptid))
+    /* Since in sync mode, bpstat_do_actions may resume the inferior,
+       and only return when it is stopped at the next breakpoint, we
+       keep doing breakpoint actions until it returns false to
+       indicate the inferior was not resumed.  */
+    if (!bpstat_do_actions_1 (&inferior_thread ()->stop_bpstat))
+      break;
 }
 
 /* Print out the (old or new) value associated with a watchpoint.  */
@@ -3100,7 +3143,8 @@ bpstat_stop_status (CORE_ADDR bp_addr, ptid_t ptid)
 	/* We will stop here */
 	if (b->disposition == disp_disable)
 	  {
-	    b->enable_state = bp_disabled;
+	    if (b->enable_state != bp_permanent)
+	      b->enable_state = bp_disabled;
 	    update_global_location_list (0);
 	  }
 	if (b->silent)
@@ -4100,7 +4144,8 @@ maintenance_info_breakpoints (char *bnum_exp, int from_tty)
 }
 
 static int
-breakpoint_has_pc (struct breakpoint *b, CORE_ADDR pc, asection *section)
+breakpoint_has_pc (struct breakpoint *b,
+		   CORE_ADDR pc, struct obj_section *section)
 {
   struct bp_location *bl = b->loc;
   for (; bl; bl = bl->next)
@@ -4115,7 +4160,8 @@ breakpoint_has_pc (struct breakpoint *b, CORE_ADDR pc, asection *section)
 /* Print a message describing any breakpoints set at PC.  */
 
 static void
-describe_other_breakpoints (CORE_ADDR pc, asection *section, int thread)
+describe_other_breakpoints (CORE_ADDR pc, struct obj_section *section,
+			    int thread)
 {
   int others = 0;
   struct breakpoint *b;
@@ -4207,7 +4253,7 @@ breakpoint_address_is_meaningful (struct breakpoint *bpt)
    that one the official one, and the rest as duplicates.  */
 
 static void
-check_duplicates_for (CORE_ADDR address, asection *section)
+check_duplicates_for (CORE_ADDR address, struct obj_section *section)
 {
   struct bp_location *b;
   int count = 0;
@@ -4592,12 +4638,12 @@ delete_longjmp_breakpoint (int thread)
 }
 
 static void
-create_overlay_event_breakpoint (char *func_name)
+create_overlay_event_breakpoint_1 (char *func_name, struct objfile *objfile)
 {
   struct breakpoint *b;
   struct minimal_symbol *m;
 
-  if ((m = lookup_minimal_symbol_text (func_name, NULL)) == NULL)
+  if ((m = lookup_minimal_symbol_text (func_name, objfile)) == NULL)
     return;
  
   b = create_internal_breakpoint (SYMBOL_VALUE_ADDRESS (m), 
@@ -4615,6 +4661,14 @@ create_overlay_event_breakpoint (char *func_name)
       overlay_events_enabled = 0;
     }
   update_global_location_list (1);
+}
+
+static void
+create_overlay_event_breakpoint (char *func_name)
+{
+  struct objfile *objfile;
+  ALL_OBJFILES (objfile)
+    create_overlay_event_breakpoint_1 (func_name, objfile);
 }
 
 void
@@ -5184,6 +5238,34 @@ add_location_to_breakpoint (struct breakpoint *b, enum bptype bptype,
   set_breakpoint_location_function (loc);
   return loc;
 }
+
+
+/* Return 1 if LOC is pointing to a permanent breakpoint, 
+   return 0 otherwise.  */
+
+static int
+bp_loc_is_permanent (struct bp_location *loc)
+{
+  int len;
+  CORE_ADDR addr;
+  const gdb_byte *brk;
+  gdb_byte *target_mem;
+
+  gdb_assert (loc != NULL);
+
+  addr = loc->address;
+  brk = gdbarch_breakpoint_from_pc (current_gdbarch, &addr, &len);
+
+  target_mem = alloca (len);
+
+  if (target_read_memory (loc->address, target_mem, len) == 0
+      && memcmp (target_mem, brk, len) == 0)
+    return 1;
+
+  return 0;
+}
+
+
 
 /* Create a breakpoint with SAL as location.  Use ADDR_STRING
    as textual description of the location, and COND_STRING
@@ -5237,6 +5319,9 @@ create_breakpoint (struct symtabs_and_lines sals, char *addr_string,
 	{
 	  loc = add_location_to_breakpoint (b, type, &sal);
 	}
+
+      if (bp_loc_is_permanent (loc))
+	make_breakpoint_permanent (b);
 
       if (b->cond_string)
 	{
@@ -5839,7 +5924,7 @@ resolve_sal_pc (struct symtab_and_line *sal)
 	  if (sym != NULL)
 	    {
 	      fixup_symbol_section (sym, sal->symtab->objfile);
-	      sal->section = SYMBOL_BFD_SECTION (sym);
+	      sal->section = SYMBOL_OBJ_SECTION (sym);
 	    }
 	  else
 	    {
@@ -5852,7 +5937,7 @@ resolve_sal_pc (struct symtab_and_line *sal)
 
 	      msym = lookup_minimal_symbol_by_pc (sal->pc);
 	      if (msym)
-		sal->section = SYMBOL_BFD_SECTION (msym);
+		sal->section = SYMBOL_OBJ_SECTION (msym);
 	    }
 	}
     }
@@ -6376,7 +6461,8 @@ until_break_command (char *arg, int from_tty, int anywhere)
       args->breakpoint2 = breakpoint2;
 
       discard_cleanups (old_chain);
-      add_continuation (until_break_command_continuation, args,
+      add_continuation (inferior_thread (),
+			until_break_command_continuation, args,
 			xfree);
     }
   else
@@ -6391,36 +6477,6 @@ ep_skip_leading_whitespace (char **s)
   while (isspace (**s))
     *s += 1;
 }
-
-/* This function examines a string, and attempts to find a token
-   that might be an event name in the leading characters.  If a
-   possible match is found, a pointer to the last character of
-   the token is returned.  Else, NULL is returned. */
-
-static char *
-ep_find_event_name_end (char *arg)
-{
-  char *s = arg;
-  char *event_name_end = NULL;
-
-  /* If we could depend upon the presense of strrpbrk, we'd use that... */
-  if (arg == NULL)
-    return NULL;
-
-  /* We break out of the loop when we find a token delimiter.
-     Basically, we're looking for alphanumerics and underscores;
-     anything else delimites the token. */
-  while (*s != '\0')
-    {
-      if (!isalnum (*s) && (*s != '_'))
-	break;
-      event_name_end = s;
-      s++;
-    }
-
-  return event_name_end;
-}
-
 
 /* This function attempts to parse an optional "if <cond>" clause
    from the arg string.  If one is not found, it returns NULL.
@@ -6493,16 +6549,24 @@ ep_parse_optional_filename (char **arg)
 
 typedef enum
 {
-  catch_fork, catch_vfork
+  catch_fork_temporary, catch_vfork_temporary,
+  catch_fork_permanent, catch_vfork_permanent
 }
 catch_fork_kind;
 
 static void
-catch_fork_command_1 (catch_fork_kind fork_kind, char *arg, int tempflag,
-		      int from_tty)
+catch_fork_command_1 (char *arg, int from_tty, struct cmd_list_element *command)
 {
   char *cond_string = NULL;
+  catch_fork_kind fork_kind;
+  int tempflag;
 
+  fork_kind = (catch_fork_kind) (uintptr_t) get_cmd_context (command);
+  tempflag = (fork_kind == catch_fork_temporary
+	      || fork_kind == catch_vfork_temporary);
+
+  if (!arg)
+    arg = "";
   ep_skip_leading_whitespace (&arg);
 
   /* The allowed syntax is:
@@ -6519,10 +6583,12 @@ catch_fork_command_1 (catch_fork_kind fork_kind, char *arg, int tempflag,
      and enable reporting of such events. */
   switch (fork_kind)
     {
-    case catch_fork:
+    case catch_fork_temporary:
+    case catch_fork_permanent:
       create_fork_event_catchpoint (tempflag, cond_string);
       break;
-    case catch_vfork:
+    case catch_vfork_temporary:
+    case catch_vfork_permanent:
       create_vfork_event_catchpoint (tempflag, cond_string);
       break;
     default:
@@ -6532,10 +6598,15 @@ catch_fork_command_1 (catch_fork_kind fork_kind, char *arg, int tempflag,
 }
 
 static void
-catch_exec_command_1 (char *arg, int tempflag, int from_tty)
+catch_exec_command_1 (char *arg, int from_tty, struct cmd_list_element *command)
 {
+  int tempflag;
   char *cond_string = NULL;
 
+  tempflag = get_cmd_context (command) == CATCH_TEMPORARY;
+
+  if (!arg)
+    arg = "";
   ep_skip_leading_whitespace (&arg);
 
   /* The allowed syntax is:
@@ -6554,11 +6625,16 @@ catch_exec_command_1 (char *arg, int tempflag, int from_tty)
 }
 
 static void
-catch_load_command_1 (char *arg, int tempflag, int from_tty)
+catch_load_command_1 (char *arg, int from_tty, struct cmd_list_element *command)
 {
+  int tempflag;
   char *dll_pathname = NULL;
   char *cond_string = NULL;
 
+  tempflag = get_cmd_context (command) == CATCH_TEMPORARY;
+
+  if (!arg)
+    arg = "";
   ep_skip_leading_whitespace (&arg);
 
   /* The allowed syntax is:
@@ -6596,11 +6672,17 @@ catch_load_command_1 (char *arg, int tempflag, int from_tty)
 }
 
 static void
-catch_unload_command_1 (char *arg, int tempflag, int from_tty)
+catch_unload_command_1 (char *arg, int from_tty,
+			struct cmd_list_element *command)
 {
+  int tempflag;
   char *dll_pathname = NULL;
   char *cond_string = NULL;
 
+  tempflag = get_cmd_context (command) == CATCH_TEMPORARY;
+
+  if (!arg)
+    arg = "";
   ep_skip_leading_whitespace (&arg);
 
   /* The allowed syntax is:
@@ -6739,6 +6821,8 @@ catch_exception_command_1 (enum exception_event_kind ex_event, char *arg,
   char *cond_string = NULL;
   struct symtab_and_line *sal = NULL;
 
+  if (!arg)
+    arg = "";
   ep_skip_leading_whitespace (&arg);
 
   cond_string = ep_parse_optional_if_clause (&arg);
@@ -6754,6 +6838,24 @@ catch_exception_command_1 (enum exception_event_kind ex_event, char *arg,
     return;
 
   warning (_("Unsupported with this platform/compiler combination."));
+}
+
+/* Implementation of "catch catch" command.  */
+
+static void
+catch_catch_command (char *arg, int from_tty, struct cmd_list_element *command)
+{
+  int tempflag = get_cmd_context (command) == CATCH_TEMPORARY;
+  catch_exception_command_1 (EX_EVENT_CATCH, arg, tempflag, from_tty);
+}
+
+/* Implementation of "catch throw" command.  */
+
+static void
+catch_throw_command (char *arg, int from_tty, struct cmd_list_element *command)
+{
+  int tempflag = get_cmd_context (command) == CATCH_TEMPORARY;
+  catch_exception_command_1 (EX_EVENT_THROW, arg, tempflag, from_tty);
 }
 
 /* Create a breakpoint struct for Ada exception catchpoints.  */
@@ -6805,8 +6907,10 @@ create_ada_exception_breakpoint (struct symtab_and_line sal,
 /* Implement the "catch exception" command.  */
 
 static void
-catch_ada_exception_command (char *arg, int tempflag, int from_tty)
+catch_ada_exception_command (char *arg, int from_tty,
+			     struct cmd_list_element *command)
 {
+  int tempflag;
   struct symtab_and_line sal;
   enum bptype type;
   char *addr_string = NULL;
@@ -6815,6 +6919,10 @@ catch_ada_exception_command (char *arg, int tempflag, int from_tty)
   struct expression *cond = NULL;
   struct breakpoint_ops *ops = NULL;
 
+  tempflag = get_cmd_context (command) == CATCH_TEMPORARY;
+
+  if (!arg)
+    arg = "";
   sal = ada_decode_exception_location (arg, &addr_string, &exp_string,
                                        &cond_string, &cond, &ops);
   create_ada_exception_breakpoint (sal, addr_string, exp_string,
@@ -6825,9 +6933,13 @@ catch_ada_exception_command (char *arg, int tempflag, int from_tty)
 /* Implement the "catch syscall" command. */
 
 static void
-catch_syscall_command_1 (char *arg, int tempflag, int from_tty)
+catch_syscall_command_1 (char *arg, int from_tty, struct cmd_list_element *command)
 {
+  int tempflag;
   int syscall_number = CATCHING_ANY_SYSCALL;
+
+  tempflag = get_cmd_context (command) == CATCH_TEMPORARY;
+
   ep_skip_leading_whitespace (&arg);
 
   /* The allowed syntax is:
@@ -6853,142 +6965,33 @@ catch_syscall_command_1 (char *arg, int tempflag, int from_tty)
 /* Implement the "catch assert" command.  */
 
 static void
-catch_assert_command (char *arg, int tempflag, int from_tty)
+catch_assert_command (char *arg, int from_tty, struct cmd_list_element *command)
 {
+  int tempflag;
   struct symtab_and_line sal;
   char *addr_string = NULL;
   struct breakpoint_ops *ops = NULL;
 
+  tempflag = get_cmd_context (command) == CATCH_TEMPORARY;
+
+  if (!arg)
+    arg = "";
   sal = ada_decode_assert_location (arg, &addr_string, &ops);
   create_ada_exception_breakpoint (sal, addr_string, NULL, NULL, NULL, ops,
                                    tempflag, from_tty);
 }
 
 static void
-catch_command_1 (char *arg, int tempflag, int from_tty)
-{
-
-  /* The first argument may be an event name, such as "start" or "load".
-     If so, then handle it as such.  If it doesn't match an event name,
-     then attempt to interpret it as an exception name.  (This latter is
-     the v4.16-and-earlier GDB meaning of the "catch" command.)
-
-     First, try to find the bounds of what might be an event name. */
-  char *arg1_start = arg;
-  char *arg1_end;
-  int arg1_length;
-
-  if (arg1_start == NULL)
-    {
-      /* Old behaviour was to use pre-v-4.16 syntax */
-      /* catch_throw_command_1 (arg1_start, tempflag, from_tty); */
-      /* return; */
-      /* Now, this is not allowed */
-      error (_("Catch requires an event name."));
-
-    }
-  arg1_end = ep_find_event_name_end (arg1_start);
-  if (arg1_end == NULL)
-    error (_("catch requires an event"));
-  arg1_length = arg1_end + 1 - arg1_start;
-
-  /* Try to match what we found against known event names. */
-  if (strncmp (arg1_start, "signal", arg1_length) == 0)
-    {
-      error (_("Catch of signal not yet implemented"));
-    }
-  else if (strncmp (arg1_start, "catch", arg1_length) == 0)
-    {
-      catch_exception_command_1 (EX_EVENT_CATCH, arg1_end + 1, 
-				 tempflag, from_tty);
-    }
-  else if (strncmp (arg1_start, "throw", arg1_length) == 0)
-    {
-      catch_exception_command_1 (EX_EVENT_THROW, arg1_end + 1, 
-				 tempflag, from_tty);
-    }
-  else if (strncmp (arg1_start, "thread_start", arg1_length) == 0)
-    {
-      error (_("Catch of thread_start not yet implemented"));
-    }
-  else if (strncmp (arg1_start, "thread_exit", arg1_length) == 0)
-    {
-      error (_("Catch of thread_exit not yet implemented"));
-    }
-  else if (strncmp (arg1_start, "thread_join", arg1_length) == 0)
-    {
-      error (_("Catch of thread_join not yet implemented"));
-    }
-  else if (strncmp (arg1_start, "start", arg1_length) == 0)
-    {
-      error (_("Catch of start not yet implemented"));
-    }
-  else if (strncmp (arg1_start, "exit", arg1_length) == 0)
-    {
-      error (_("Catch of exit not yet implemented"));
-    }
-  else if (strncmp (arg1_start, "fork", arg1_length) == 0)
-    {
-      catch_fork_command_1 (catch_fork, arg1_end + 1, tempflag, from_tty);
-    }
-  else if (strncmp (arg1_start, "vfork", arg1_length) == 0)
-    {
-      catch_fork_command_1 (catch_vfork, arg1_end + 1, tempflag, from_tty);
-    }
-  else if (strncmp (arg1_start, "exec", arg1_length) == 0)
-    {
-      catch_exec_command_1 (arg1_end + 1, tempflag, from_tty);
-    }
-  else if (strncmp (arg1_start, "load", arg1_length) == 0)
-    {
-      catch_load_command_1 (arg1_end + 1, tempflag, from_tty);
-    }
-  else if (strncmp (arg1_start, "unload", arg1_length) == 0)
-    {
-      catch_unload_command_1 (arg1_end + 1, tempflag, from_tty);
-    }
-  else if (strncmp (arg1_start, "stop", arg1_length) == 0)
-    {
-      error (_("Catch of stop not yet implemented"));
-    }
-  else if (strncmp (arg1_start, "exception", arg1_length) == 0)
-    {
-      catch_ada_exception_command (arg1_end + 1, tempflag, from_tty);
-    }
-  else if (strncmp (arg1_start, "syscall", arg1_length) == 0)
-    {
-      catch_syscall_command_1 (arg1_end + 1, tempflag, from_tty);
-    }
-
-  else if (strncmp (arg1_start, "assert", arg1_length) == 0)
-    {
-      catch_assert_command (arg1_end + 1, tempflag, from_tty);
-    }
-
-  /* This doesn't appear to be an event name */
-
-  else
-    {
-      /* Pre-v.4.16 behaviour was to treat the argument
-         as the name of an exception */
-      /* catch_throw_command_1 (arg1_start, tempflag, from_tty); */
-      /* Now this is not allowed */
-      error (_("Unknown event kind specified for catch"));
-
-    }
-}
-
-static void
 catch_command (char *arg, int from_tty)
 {
-  catch_command_1 (arg, 0, from_tty);
+  error (_("Catch requires an event name."));
 }
 
 
 static void
 tcatch_command (char *arg, int from_tty)
 {
-  catch_command_1 (arg, 1, from_tty);
+  error (_("Catch requires an event name."));
 }
 
 /* Delete breakpoints by address or line.  */
@@ -7303,7 +7306,9 @@ update_global_location_list (int should_insert)
       check_duplicates (b);
     }
 
-  if (always_inserted_mode && should_insert && target_has_execution)
+  if (breakpoints_always_inserted_mode ()
+      && should_insert
+      && target_has_execution)
     insert_breakpoint_locations ();
 }
 
@@ -7422,9 +7427,6 @@ delete_breakpoint (struct breakpoint *bpt)
      in event-top.c won't do anything, and temporary breakpoints
      with commands won't work.  */
 
-  /* Clear the current context.  */
-  bpstat_remove_breakpoint (stop_bpstat, bpt);
-  /* And from all threads.  */
   iterate_over_threads (bpstat_remove_breakpoint_callback, bpt);
 
   /* Now that breakpoint is removed from breakpoint
@@ -7608,6 +7610,10 @@ update_breakpoint_locations (struct breakpoint *b,
       if (b->line_number == 0)
 	b->line_number = sals.sals[i].line;
     }
+
+  /* Update locations of permanent breakpoints.  */
+  if (b->enable_state == bp_permanent)
+    make_breakpoint_permanent (b);
 
   /* If possible, carry over 'disable' status from existing breakpoints.  */
   {
@@ -8378,11 +8384,6 @@ single_step_breakpoint_inserted_here_p (CORE_ADDR pc)
   return 0;
 }
 
-int breakpoints_always_inserted_mode (void)
-{
-  return always_inserted_mode;
-}
-
 /* Returns 0 if 'bp' is NOT a syscall catchpoint,
    non-zero otherwise. */
 static int is_syscall_catchpoint_enabled (struct breakpoint *bp)
@@ -8448,6 +8449,34 @@ CONDITION is a boolean expression.\n\
 Multiple breakpoints at one place are permitted, and useful if conditional.\n\
 \n\
 Do \"help breakpoints\" for info on other commands dealing with breakpoints."
+
+/* List of subcommands for "catch".  */
+static struct cmd_list_element *catch_cmdlist;
+
+/* List of subcommands for "tcatch".  */
+static struct cmd_list_element *tcatch_cmdlist;
+
+/* Like add_cmd, but add the command to both the "catch" and "tcatch"
+   lists, and pass some additional user data to the command function.  */
+static void
+add_catch_command (char *name, char *docstring,
+		   void (*sfunc) (char *args, int from_tty,
+				  struct cmd_list_element *command),
+		   void *user_data_catch,
+		   void *user_data_tcatch)
+{
+  struct cmd_list_element *command;
+
+  command = add_cmd (name, class_breakpoint, NULL, docstring,
+		     &catch_cmdlist);
+  set_cmd_sfunc (command, sfunc);
+  set_cmd_context (command, user_data_catch);
+
+  command = add_cmd (name, class_breakpoint, NULL, docstring,
+		     &tcatch_cmdlist);
+  set_cmd_sfunc (command, sfunc);
+  set_cmd_context (command, user_data_tcatch);
+}
 
 void
 _initialize_breakpoint (void)
@@ -8706,53 +8735,69 @@ Convenience variable \"$bpnum\" contains the number of the last\n\
 breakpoint set."),
 	   &maintenanceinfolist);
 
-  add_com ("catch", class_breakpoint, catch_command, _("\
-Set catchpoints to catch events.\n\
-Raised signals may be caught:\n\
-\tcatch signal              - all signals\n\
-\tcatch signal <signame>    - a particular signal\n\
-Raised exceptions may be caught:\n\
-\tcatch throw               - all exceptions, when thrown\n\
-\tcatch throw <exceptname>  - a particular exception, when thrown\n\
-\tcatch catch               - all exceptions, when caught\n\
-\tcatch catch <exceptname>  - a particular exception, when caught\n\
-Thread or process events may be caught:\n\
-\tcatch thread_start        - any threads, just after creation\n\
-\tcatch thread_exit         - any threads, just before expiration\n\
-\tcatch thread_join         - any threads, just after joins\n\
-Process events may be caught:\n\
-\tcatch start               - any processes, just after creation\n\
-\tcatch exit                - any processes, just before expiration\n\
-\tcatch fork                - calls to fork()\n\
-\tcatch vfork               - calls to vfork()\n\
-\tcatch exec                - calls to exec()\n\
-\tcatch syscall             - calls to a system call\n\
-Dynamically-linked library events may be caught:\n\
-\tcatch load                - loads of any library\n\
-\tcatch load <libname>      - loads of a particular library\n\
-\tcatch unload              - unloads of any library\n\
-\tcatch unload <libname>    - unloads of a particular library\n\
-The act of your program's execution stopping may also be caught:\n\
-\tcatch stop\n\n\
-C++ exceptions may be caught:\n\
-\tcatch throw               - all exceptions, when thrown\n\
-\tcatch catch               - all exceptions, when caught\n\
-Ada exceptions may be caught:\n\
-\tcatch exception           - all exceptions, when raised\n\
-\tcatch exception <name>    - a particular exception, when raised\n\
-\tcatch exception unhandled - all unhandled exceptions, when raised\n\
-\tcatch assert              - all failed assertions, when raised\n\
-\n\
-Do \"help set follow-fork-mode\" for info on debugging your program\n\
-after a fork or vfork is caught.\n\n\
-Do \"help breakpoints\" for info on other commands dealing with breakpoints."));
+  add_prefix_cmd ("catch", class_breakpoint, catch_command, _("\
+Set catchpoints to catch events."),
+		  &catch_cmdlist, "catch ",
+		  0/*allow-unknown*/, &cmdlist);
 
-  add_com ("tcatch", class_breakpoint, tcatch_command, _("\
-Set temporary catchpoints to catch events.\n\
-Args like \"catch\" command.\n\
-Like \"catch\" except the catchpoint is only temporary,\n\
-so it will be deleted when hit.  Equivalent to \"catch\" followed\n\
-by using \"enable delete\" on the catchpoint number."));
+  add_prefix_cmd ("tcatch", class_breakpoint, tcatch_command, _("\
+Set temporary catchpoints to catch events."),
+		  &tcatch_cmdlist, "tcatch ",
+		  0/*allow-unknown*/, &cmdlist);
+
+  /* Add catch and tcatch sub-commands.  */
+  add_catch_command ("catch", _("\
+Catch an exception, when caught.\n\
+With an argument, catch only exceptions with the given name."),
+		     catch_catch_command,
+		     CATCH_PERMANENT,
+		     CATCH_TEMPORARY);
+  add_catch_command ("throw", _("\
+Catch an exception, when thrown.\n\
+With an argument, catch only exceptions with the given name."),
+		     catch_throw_command,
+		     CATCH_PERMANENT,
+		     CATCH_TEMPORARY);
+  add_catch_command ("fork", _("Catch calls to fork."),
+		     catch_fork_command_1,
+		     (void *) (uintptr_t) catch_fork_permanent,
+		     (void *) (uintptr_t) catch_fork_temporary);
+  add_catch_command ("vfork", _("Catch calls to vfork."),
+		     catch_fork_command_1,
+		     (void *) (uintptr_t) catch_vfork_permanent,
+		     (void *) (uintptr_t) catch_vfork_temporary);
+  add_catch_command ("exec", _("Catch calls to exec."),
+		     catch_exec_command_1,
+		     CATCH_PERMANENT,
+		     CATCH_TEMPORARY);
+  add_catch_command ("syscall", _("Catch calls to syscalls."),
+                     catch_syscall_command_1,
+                     CATCH_PERMANENT,
+                     CATCH_TEMPORARY);
+  add_catch_command ("load", _("\
+Catch library loads.\n\
+With an argument, catch only loads of that library."),
+		     catch_load_command_1,
+		     CATCH_PERMANENT,
+		     CATCH_TEMPORARY);
+  add_catch_command ("unload", _("\
+Catch library unloads.\n\
+With an argument, catch only unloads of that library."),
+		     catch_unload_command_1,
+		     CATCH_PERMANENT,
+		     CATCH_TEMPORARY);
+  add_catch_command ("exception", _("\
+Catch Ada exceptions, when raised.\n\
+With an argument, catch only exceptions with the given name."),
+		     catch_ada_exception_command,
+		     CATCH_PERMANENT,
+		     CATCH_TEMPORARY);
+  add_catch_command ("assert", _("\
+Catch failed Ada assertions, when raised.\n\
+With an argument, catch only exceptions with the given name."),
+		     catch_assert_command,
+		     CATCH_PERMANENT,
+		     CATCH_TEMPORARY);
 
   c = add_com ("watch", class_breakpoint, watch_command, _("\
 Set a watchpoint for an expression.\n\
@@ -8832,14 +8877,18 @@ a warning will be emitted for such breakpoints."),
 			   &breakpoint_set_cmdlist,
 			   &breakpoint_show_cmdlist);
 
-  add_setshow_boolean_cmd ("always-inserted", class_support,
-			   &always_inserted_mode, _("\
+  add_setshow_enum_cmd ("always-inserted", class_support,
+			always_inserted_enums, &always_inserted_mode, _("\
 Set mode for inserting breakpoints."), _("\
 Show mode for inserting breakpoints."), _("\
-When this mode is off (which is the default), breakpoints are inserted in\n\
-inferior when it is resumed, and removed when execution stops.  When this\n\
-mode is on, breakpoints are inserted immediately and removed only when\n\
-the user deletes the breakpoint."),
+When this mode is off, breakpoints are inserted in inferior when it is\n\
+resumed, and removed when execution stops.  When this mode is on,\n\
+breakpoints are inserted immediately and removed only when the user\n\
+deletes the breakpoint.  When this mode is auto (which is the default),\n\
+the behaviour depends on the non-stop setting (see help set non-stop).\n\
+In this case, if gdb is controlling the inferior in non-stop mode, gdb\n\
+behaves as if always-inserted mode is on; if gdb is controlling the\n\
+inferior in all-stop mode, gdb behaves as if always-inserted mode is off."),
 			   NULL,
 			   &show_always_inserted_mode,
 			   &breakpoint_set_cmdlist,

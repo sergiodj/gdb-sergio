@@ -778,7 +778,7 @@ static void
 show_mask_address (struct ui_file *file, int from_tty,
 		   struct cmd_list_element *c, const char *value)
 {
-  struct gdbarch_tdep *tdep = gdbarch_tdep (current_gdbarch);
+  struct gdbarch_tdep *tdep = gdbarch_tdep (target_gdbarch);
 
   deprecated_show_value_hack (file, from_tty, c, value);
   switch (mask_address_var)
@@ -2313,9 +2313,9 @@ mips_stub_frame_base_sniffer (struct frame_info *this_frame)
 /* mips_addr_bits_remove - remove useless address bits  */
 
 static CORE_ADDR
-mips_addr_bits_remove (CORE_ADDR addr)
+mips_addr_bits_remove (struct gdbarch *gdbarch, CORE_ADDR addr)
 {
-  struct gdbarch_tdep *tdep = gdbarch_tdep (current_gdbarch);
+  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
   if (mips_mask_address_p (tdep) && (((ULONGEST) addr) >> 32 == 0xffffffffUL))
     /* This hack is a work-around for existing boards using PMON, the
        simulator, and any other 64-bit targets that doesn't have true
@@ -4788,7 +4788,7 @@ show_mipsfpu_command (char *args, int from_tty)
 {
   char *fpu;
 
-  if (gdbarch_bfd_arch_info (current_gdbarch)->arch != bfd_arch_mips)
+  if (gdbarch_bfd_arch_info (target_gdbarch)->arch != bfd_arch_mips)
     {
       printf_unfiltered
 	("The MIPS floating-point coprocessor is unknown "
@@ -4796,7 +4796,7 @@ show_mipsfpu_command (char *args, int from_tty)
       return;
     }
 
-  switch (MIPS_FPU_TYPE (current_gdbarch))
+  switch (MIPS_FPU_TYPE (target_gdbarch))
     {
     case MIPS_FPU_SINGLE:
       fpu = "single-precision";
@@ -4885,11 +4885,12 @@ set_mipsfpu_auto_command (char *args, int from_tty)
 void
 deprecated_mips_set_processor_regs_hack (void)
 {
-  struct gdbarch_tdep *tdep = gdbarch_tdep (current_gdbarch);
+  struct regcache *regcache = get_current_regcache ();
+  struct gdbarch *gdbarch = get_regcache_arch (regcache);
+  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
   ULONGEST prid;
 
-  regcache_cooked_read_unsigned (get_current_regcache (),
-				 MIPS_PRID_REGNUM, &prid);
+  regcache_cooked_read_unsigned (regcache, MIPS_PRID_REGNUM, &prid);
   if ((prid & ~0xf) == 0x700)
     tdep->mips_processor_reg_names = mips_r3041_reg_names;
 }
@@ -4907,8 +4908,6 @@ reinit_frame_cache_sfunc (char *args, int from_tty,
 static int
 gdb_print_insn_mips (bfd_vma memaddr, struct disassemble_info *info)
 {
-  struct gdbarch_tdep *tdep = gdbarch_tdep (current_gdbarch);
-
   /* FIXME: cagney/2003-06-26: Is this even necessary?  The
      disassembler needs to be able to locally determine the ISA, and
      not rely on GDB.  Otherwize the stand-alone 'objdump -d' will not
@@ -4920,17 +4919,7 @@ gdb_print_insn_mips (bfd_vma memaddr, struct disassemble_info *info)
   memaddr &= (info->mach == bfd_mach_mips16 ? ~1 : ~3);
 
   /* Set the disassembler options.  */
-  if (tdep->mips_abi == MIPS_ABI_N32 || tdep->mips_abi == MIPS_ABI_N64)
-    {
-      /* Set up the disassembler info, so that we get the right
-         register names from libopcodes.  */
-      if (tdep->mips_abi == MIPS_ABI_N32)
-	info->disassembler_options = "gpr-names=n32";
-      else
-	info->disassembler_options = "gpr-names=64";
-      info->flavour = bfd_target_elf_flavour;
-    }
-  else
+  if (!info->disassembler_options)
     /* This string is not recognized explicitly by the disassembler,
        but it tells the disassembler to not try to guess the ABI from
        the bfd elf headers, such that, if the user overrides the ABI
@@ -4943,6 +4932,28 @@ gdb_print_insn_mips (bfd_vma memaddr, struct disassemble_info *info)
     return print_insn_big_mips (memaddr, info);
   else
     return print_insn_little_mips (memaddr, info);
+}
+
+static int
+gdb_print_insn_mips_n32 (bfd_vma memaddr, struct disassemble_info *info)
+{
+  /* Set up the disassembler info, so that we get the right
+     register names from libopcodes.  */
+  info->disassembler_options = "gpr-names=n32";
+  info->flavour = bfd_target_elf_flavour;
+
+  return gdb_print_insn_mips (memaddr, info);
+}
+
+static int
+gdb_print_insn_mips_n64 (bfd_vma memaddr, struct disassemble_info *info)
+{
+  /* Set up the disassembler info, so that we get the right
+     register names from libopcodes.  */
+  info->disassembler_options = "gpr-names=64";
+  info->flavour = bfd_target_elf_flavour;
+
+  return gdb_print_insn_mips (memaddr, info);
 }
 
 /* This function implements gdbarch_breakpoint_from_pc.  It uses the program
@@ -5872,7 +5883,12 @@ mips_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
 
   set_gdbarch_print_registers_info (gdbarch, mips_print_registers_info);
 
-  set_gdbarch_print_insn (gdbarch, gdb_print_insn_mips);
+  if (mips_abi == MIPS_ABI_N32)
+    set_gdbarch_print_insn (gdbarch, gdb_print_insn_mips_n32);
+  else if (mips_abi == MIPS_ABI_N64)
+    set_gdbarch_print_insn (gdbarch, gdb_print_insn_mips_n64);
+  else
+    set_gdbarch_print_insn (gdbarch, gdb_print_insn_mips);
 
   /* FIXME: cagney/2003-08-29: The macros HAVE_STEPPABLE_WATCHPOINT,
      HAVE_NONSTEPPABLE_WATCHPOINT, and HAVE_CONTINUABLE_WATCHPOINT
@@ -5958,7 +5974,7 @@ show_mips_abi (struct ui_file *file,
 	       struct cmd_list_element *ignored_cmd,
 	       const char *ignored_value)
 {
-  if (gdbarch_bfd_arch_info (current_gdbarch)->arch != bfd_arch_mips)
+  if (gdbarch_bfd_arch_info (target_gdbarch)->arch != bfd_arch_mips)
     fprintf_filtered
       (file, 
        "The MIPS ABI is unknown because the current architecture "
@@ -5966,7 +5982,7 @@ show_mips_abi (struct ui_file *file,
   else
     {
       enum mips_abi global_abi = global_mips_abi ();
-      enum mips_abi actual_abi = mips_abi (current_gdbarch);
+      enum mips_abi actual_abi = mips_abi (target_gdbarch);
       const char *actual_abi_str = mips_abi_strings[actual_abi];
 
       if (global_abi == MIPS_ABI_UNKNOWN)

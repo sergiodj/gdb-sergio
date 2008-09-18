@@ -477,7 +477,7 @@ Cannot execute this command without a live selected thread.  See `help thread'."
   /* FIXME:  This should be cacheing the frame and only running when
      the frame changes.  */
 
-  if (target_has_stack && !is_running (inferior_ptid))
+  if (target_has_stack && is_stopped (inferior_ptid))
     {
       flang = get_frame_language ();
       if (!warned
@@ -534,8 +534,10 @@ command_loop (void)
 	}
 
       execute_command (command, instream == stdin);
-      /* Do any commands attached to breakpoint we stopped at.  */
-      bpstat_do_actions (&stop_bpstat);
+
+      /* Do any commands attached to breakpoint we are stopped at.  */
+      bpstat_do_actions ();
+
       do_cleanups (old_chain);
 
       if (display_time)
@@ -1222,8 +1224,9 @@ quit_target (void *arg)
         target_kill ();
     }
 
-  /* UDI wants this, to kill the TIP.  */
-  target_close (&current_target, 1);
+  /* Give all pushed targets a chance to do minimal cleanup, and pop
+     them all out.  */
+  pop_all_targets (1);
 
   /* Save the history information if it is appropriate to do so.  */
   if (write_history_p && history_filename)

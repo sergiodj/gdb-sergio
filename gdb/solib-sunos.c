@@ -36,6 +36,7 @@
 #include "objfiles.h"
 #include "gdbcore.h"
 #include "inferior.h"
+#include "gdbthread.h"
 #include "solist.h"
 #include "bcache.h"
 #include "regcache.h"
@@ -184,7 +185,6 @@ allocate_rt_common_objfile (void)
 
   objfile = (struct objfile *) xmalloc (sizeof (struct objfile));
   memset (objfile, 0, sizeof (struct objfile));
-  objfile->md = NULL;
   objfile->psymbol_cache = bcache_xmalloc ();
   objfile->macro_cache = bcache_xmalloc ();
   obstack_init (&objfile->objfile_obstack);
@@ -738,6 +738,8 @@ sunos_special_symbol_handling (void)
 static void
 sunos_solib_create_inferior_hook (void)
 {
+  struct thread_info *tp;
+
   if ((debug_base = locate_base ()) == 0)
     {
       /* Can't find the symbol or the executable is statically linked. */
@@ -759,15 +761,16 @@ sunos_solib_create_inferior_hook (void)
      can go groveling around in the dynamic linker structures to find
      out what we need to know about them. */
 
+  tp = inferior_thread ();
   clear_proceed_status ();
   stop_soon = STOP_QUIETLY;
-  stop_signal = TARGET_SIGNAL_0;
+  tp->stop_signal = TARGET_SIGNAL_0;
   do
     {
-      target_resume (pid_to_ptid (-1), 0, stop_signal);
+      target_resume (pid_to_ptid (-1), 0, tp->stop_signal);
       wait_for_inferior (0);
     }
-  while (stop_signal != TARGET_SIGNAL_TRAP);
+  while (tp->stop_signal != TARGET_SIGNAL_TRAP);
   stop_soon = NO_STOP_QUIETLY;
 
   /* We are now either at the "mapping complete" breakpoint (or somewhere
@@ -781,9 +784,9 @@ sunos_solib_create_inferior_hook (void)
      the GDB software break point list.  Thus we have to adjust the
      PC here.  */
 
-  if (gdbarch_decr_pc_after_break (current_gdbarch))
+  if (gdbarch_decr_pc_after_break (target_gdbarch))
     {
-      stop_pc -= gdbarch_decr_pc_after_break (current_gdbarch);
+      stop_pc -= gdbarch_decr_pc_after_break (target_gdbarch);
       write_pc (stop_pc);
     }
 

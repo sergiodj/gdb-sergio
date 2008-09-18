@@ -289,9 +289,6 @@ static int linux_passed_by_entrypoint_flag = 0;
 
 /* Async mode support */
 
-/* True if async mode is currently on.  */
-static int linux_nat_async_enabled;
-
 /* Zero if the async mode, although enabled, is masked, which means
    linux_nat_wait should behave as if async mode was off.  */
 static int linux_nat_async_mask_value = 1;
@@ -852,7 +849,19 @@ linux_child_follow_fork (struct target_ops *ops, int follow_child)
     }
   else
     {
+      struct thread_info *last_tp = find_thread_pid (last_ptid);
+      struct thread_info *tp;
       char child_pid_spelling[40];
+
+      /* Copy user stepping state to the new inferior thread.  */
+      struct breakpoint *step_resume_breakpoint = last_tp->step_resume_breakpoint;
+      CORE_ADDR step_range_start = last_tp->step_range_start;
+      CORE_ADDR step_range_end = last_tp->step_range_end;
+      struct frame_id step_frame_id = last_tp->step_frame_id;
+
+      /* Otherwise, deleting the parent would get rid of this
+	 breakpoint.  */
+      last_tp->step_resume_breakpoint = NULL;
 
       /* Needed to keep the breakpoint lists in sync.  */
       if (! has_vforked)
@@ -909,6 +918,12 @@ linux_child_follow_fork (struct target_ops *ops, int follow_child)
       push_target (ops);
       linux_nat_switch_fork (inferior_ptid);
       check_for_thread_db ();
+
+      tp = inferior_thread ();
+      tp->step_resume_breakpoint = step_resume_breakpoint;
+      tp->step_range_start = step_range_start;
+      tp->step_range_end = step_range_end;
+      tp->step_frame_id = step_frame_id;
 
       /* Reset breakpoints in the child as appropriate.  */
       follow_inferior_reset_breakpoints ();
@@ -1439,6 +1454,7 @@ linux_nat_attach (char *args, int from_tty)
 {
   struct lwp_info *lp;
   int status;
+  ptid_t ptid;
 
   /* FIXME: We should probably accept a list of process id's, and
      attach all of them.  */
@@ -1453,17 +1469,17 @@ linux_nat_attach (char *args, int from_tty)
       sigdelset (&suspend_mask, SIGCHLD);
     }
 
+  /* The ptrace base target adds the main thread with (pid,0,0)
+     format.  Decorate it with lwp info.  */
+  ptid = BUILD_LWP (GET_PID (inferior_ptid), GET_PID (inferior_ptid));
+  thread_change_ptid (inferior_ptid, ptid);
+
   /* Add the initial process as the first LWP to the list.  */
-  inferior_ptid = BUILD_LWP (GET_PID (inferior_ptid), GET_PID (inferior_ptid));
-  lp = add_lwp (inferior_ptid);
+  lp = add_lwp (ptid);
 
   status = linux_nat_post_attach_wait (lp->ptid, 1, &lp->cloned,
 				       &lp->signalled);
   lp->stopped = 1;
-
-  /* If this process is not using thread_db, then we still don't
-     detect any other threads, but add at least this one.  */
-  add_thread_silent (lp->ptid);
 
   /* Save the wait status to report later.  */
   lp->resumed = 1;
@@ -1528,18 +1544,10 @@ get_pending_status (struct lwp_info *lp, int *status)
 	{
 	  /* If the core knows the thread is not executing, then we
 	     have the last signal recorded in
-	     thread_info->stop_signal, unless this is inferior_ptid,
-	     in which case, it's in the global stop_signal, due to
-	     context switching.  */
+	     thread_info->stop_signal.  */
 
-	  if (ptid_equal (lp->ptid, inferior_ptid))
-	    signo = stop_signal;
-	  else
-	    {
-	      struct thread_info *tp = find_thread_pid (lp->ptid);
-	      gdb_assert (tp);
-	      signo = tp->stop_signal;
-	    }
+	  struct thread_info *tp = find_thread_pid (lp->ptid);
+	  signo = tp->stop_signal;
 	}
 
       if (signo != TARGET_SIGNAL_0
@@ -1567,9 +1575,10 @@ GPT: lwp %s had signal %s, but it is in no pass state\n",
     {
       if (GET_LWP (lp->ptid) == GET_LWP (last_ptid))
 	{
-	  if (stop_signal != TARGET_SIGNAL_0
-	      && signal_pass_state (stop_signal))
-	    *status = W_STOPCODE (target_signal_to_host (stop_signal));
+	  struct thread_info *tp = find_thread_pid (lp->ptid);
+	  if (tp->stop_signal != TARGET_SIGNAL_0
+	      && signal_pass_state (tp->stop_signal))
+	    *status = W_STOPCODE (target_signal_to_host (tp->stop_signal));
 	}
       else if (target_can_async_p ())
 	queued_waitpid (GET_LWP (lp->ptid), status, __WALL);
@@ -2834,14 +2843,13 @@ linux_nat_wait (ptid_t ptid, struct target_waitstatus *ourstatus)
     {
       gdb_assert (!is_lwp (inferior_ptid));
 
-      inferior_ptid = BUILD_LWP (GET_PID (inferior_ptid),
-				 GET_PID (inferior_ptid));
+      /* Upgrade the main thread's ptid.  */
+      thread_change_ptid (inferior_ptid,
+			  BUILD_LWP (GET_PID (inferior_ptid),
+				     GET_PID (inferior_ptid)));
+
       lp = add_lwp (inferior_ptid);
       lp->resumed = 1;
-      /* Add the main thread to GDB's thread list.  */
-      add_thread_silent (lp->ptid);
-      set_running (lp->ptid, 1);
-      set_executing (lp->ptid, 1);
     }
 
   /* Block events while we're here.  */
@@ -3317,7 +3325,7 @@ linux_nat_pid_to_str (ptid_t ptid)
 static void
 sigchld_handler (int signo)
 {
-  if (linux_nat_async_enabled
+  if (target_async_permitted
       && linux_nat_async_events_state != sigchld_sync
       && signo == SIGCHLD)
     /* It is *always* a bug to hit this.  */
@@ -3435,12 +3443,35 @@ linux_nat_find_memory_regions (int (*func) (CORE_ADDR,
   return 0;
 }
 
+static int
+find_signalled_thread (struct thread_info *info, void *data)
+{
+  if (info->stop_signal != TARGET_SIGNAL_0
+      && ptid_get_pid (info->ptid) == ptid_get_pid (inferior_ptid))
+    return 1;
+
+  return 0;
+}
+
+static enum target_signal
+find_stop_signal (void)
+{
+  struct thread_info *info =
+    iterate_over_threads (find_signalled_thread, NULL);
+
+  if (info)
+    return info->stop_signal;
+  else
+    return TARGET_SIGNAL_0;
+}
+
 /* Records the thread's register state for the corefile note
    section.  */
 
 static char *
 linux_nat_do_thread_registers (bfd *obfd, ptid_t ptid,
-			       char *note_data, int *note_size)
+			       char *note_data, int *note_size,
+			       enum target_signal stop_signal)
 {
   gdb_gregset_t gregs;
   gdb_fpregset_t fpregs;
@@ -3535,6 +3566,7 @@ struct linux_nat_corefile_thread_data
   char *note_data;
   int *note_size;
   int num_notes;
+  enum target_signal stop_signal;
 };
 
 /* Called by gdbthread.c once per thread.  Records the thread's
@@ -3548,23 +3580,11 @@ linux_nat_corefile_thread_callback (struct lwp_info *ti, void *data)
   args->note_data = linux_nat_do_thread_registers (args->obfd,
 						   ti->ptid,
 						   args->note_data,
-						   args->note_size);
+						   args->note_size,
+						   args->stop_signal);
   args->num_notes++;
 
   return 0;
-}
-
-/* Records the register state for the corefile note section.  */
-
-static char *
-linux_nat_do_registers (bfd *obfd, ptid_t ptid,
-			char *note_data, int *note_size)
-{
-  return linux_nat_do_thread_registers (obfd,
-					ptid_build (ptid_get_pid (inferior_ptid),
-						    ptid_get_pid (inferior_ptid),
-						    0),
-					note_data, note_size);
 }
 
 /* Fills the "to_make_corefile_note" target vector.  Builds the note
@@ -3613,18 +3633,10 @@ linux_nat_make_corefile_notes (bfd *obfd, int *note_size)
   thread_args.note_data = note_data;
   thread_args.note_size = note_size;
   thread_args.num_notes = 0;
+  thread_args.stop_signal = find_stop_signal ();
   iterate_over_lwps (linux_nat_corefile_thread_callback, &thread_args);
-  if (thread_args.num_notes == 0)
-    {
-      /* iterate_over_threads didn't come up with any threads; just
-         use inferior_ptid.  */
-      note_data = linux_nat_do_registers (obfd, inferior_ptid,
-					  note_data, note_size);
-    }
-  else
-    {
-      note_data = thread_args.note_data;
-    }
+  gdb_assert (thread_args.num_notes != 0);
+  note_data = thread_args.note_data;
 
   auxv_len = target_read_alloc (&current_target, TARGET_OBJECT_AUXV,
 				NULL, &auxv);
@@ -4109,45 +4121,15 @@ linux_trad_target (CORE_ADDR (*register_u_offset)(struct gdbarch *, int, int))
   return t;
 }
 
-/* Controls if async mode is permitted.  */
-static int linux_async_permitted = 0;
-
-/* The set command writes to this variable.  If the inferior is
-   executing, linux_nat_async_permitted is *not* updated.  */
-static int linux_async_permitted_1 = 0;
-
-static void
-set_maintenance_linux_async_permitted (char *args, int from_tty,
-			       struct cmd_list_element *c)
-{
-  if (target_has_execution)
-    {
-      linux_async_permitted_1 = linux_async_permitted;
-      error (_("Cannot change this setting while the inferior is running."));
-    }
-
-  linux_async_permitted = linux_async_permitted_1;
-  linux_nat_set_async_mode (linux_async_permitted);
-}
-
-static void
-show_maintenance_linux_async_permitted (struct ui_file *file, int from_tty,
-			    struct cmd_list_element *c, const char *value)
-{
-  fprintf_filtered (file, _("\
-Controlling the GNU/Linux inferior in asynchronous mode is %s.\n"),
-		    value);
-}
-
 /* target_is_async_p implementation.  */
 
 static int
 linux_nat_is_async_p (void)
 {
   /* NOTE: palves 2008-03-21: We're only async when the user requests
-     it explicitly with the "maintenance set linux-async" command.
+     it explicitly with the "maintenance set target-async" command.
      Someday, linux will always be async.  */
-  if (!linux_async_permitted)
+  if (!target_async_permitted)
     return 0;
 
   return 1;
@@ -4159,13 +4141,19 @@ static int
 linux_nat_can_async_p (void)
 {
   /* NOTE: palves 2008-03-21: We're only async when the user requests
-     it explicitly with the "maintenance set linux-async" command.
+     it explicitly with the "maintenance set target-async" command.
      Someday, linux will always be async.  */
-  if (!linux_async_permitted)
+  if (!target_async_permitted)
     return 0;
 
   /* See target.h/target_async_mask.  */
   return linux_nat_async_mask_value;
+}
+
+static int
+linux_nat_supports_non_stop (void)
+{
+  return 1;
 }
 
 /* target_async_mask implementation.  */
@@ -4242,7 +4230,7 @@ get_pending_events (void)
 {
   int status, options, pid;
 
-  if (!linux_nat_async_enabled
+  if (!target_async_permitted
       || linux_nat_async_events_state != sigchld_async)
     internal_error (__FILE__, __LINE__,
 		    "get_pending_events called with async masked");
@@ -4446,7 +4434,7 @@ static void
 linux_nat_async (void (*callback) (enum inferior_event_type event_type,
 				   void *context), void *context)
 {
-  if (linux_nat_async_mask_value == 0 || !linux_nat_async_enabled)
+  if (linux_nat_async_mask_value == 0 || !target_async_permitted)
     internal_error (__FILE__, __LINE__,
 		    "Calling target_async when async is masked");
 
@@ -4468,35 +4456,6 @@ linux_nat_async (void (*callback) (enum inferior_event_type event_type,
       delete_file_handler (linux_nat_event_pipe[0]);
     }
   return;
-}
-
-/* Enable/Disable async mode.  */
-
-static void
-linux_nat_set_async_mode (int on)
-{
-  if (linux_nat_async_enabled != on)
-    {
-      if (on)
-	{
-	  gdb_assert (waitpid_queue == NULL);
-	  if (pipe (linux_nat_event_pipe) == -1)
-	    internal_error (__FILE__, __LINE__,
-			    "creating event pipe failed.");
-	  fcntl (linux_nat_event_pipe[0], F_SETFL, O_NONBLOCK);
-	  fcntl (linux_nat_event_pipe[1], F_SETFL, O_NONBLOCK);
-	}
-      else
-	{
-	  drain_queued_events (-1);
-	  linux_nat_num_queued_events = 0;
-	  close (linux_nat_event_pipe[0]);
-	  close (linux_nat_event_pipe[1]);
-	  linux_nat_event_pipe[0] = linux_nat_event_pipe[1] = -1;
-
-	}
-    }
-  linux_nat_async_enabled = on;
 }
 
 static int
@@ -4553,6 +4512,7 @@ linux_nat_add_target (struct target_ops *t)
 
   t->to_can_async_p = linux_nat_can_async_p;
   t->to_is_async_p = linux_nat_is_async_p;
+  t->to_supports_non_stop = linux_nat_supports_non_stop;
   t->to_async = linux_nat_async;
   t->to_async_mask = linux_nat_async_mask;
   t->to_terminal_inferior = linux_nat_terminal_inferior;
@@ -4595,6 +4555,18 @@ linux_nat_get_siginfo (ptid_t ptid)
   return &lp->siginfo;
 }
 
+/* Enable/Disable async mode.  */
+
+static void
+linux_nat_setup_async (void)
+{
+  if (pipe (linux_nat_event_pipe) == -1)
+    internal_error (__FILE__, __LINE__,
+		    "creating event pipe failed.");
+  fcntl (linux_nat_event_pipe[0], F_SETFL, O_NONBLOCK);
+  fcntl (linux_nat_event_pipe[1], F_SETFL, O_NONBLOCK);
+}
+
 void
 _initialize_linux_nat (void)
 {
@@ -4627,16 +4599,6 @@ Enables printf debugging output."),
 			    show_debug_linux_nat_async,
 			    &setdebuglist, &showdebuglist);
 
-  add_setshow_boolean_cmd ("linux-async", class_maintenance,
-			   &linux_async_permitted_1, _("\
-Set whether gdb controls the GNU/Linux inferior in asynchronous mode."), _("\
-Show whether gdb controls the GNU/Linux inferior in asynchronous mode."), _("\
-Tells gdb whether to control the GNU/Linux inferior in asynchronous mode."),
-			   set_maintenance_linux_async_permitted,
-			   show_maintenance_linux_async_permitted,
-			   &maintenance_set_cmdlist,
-			   &maintenance_show_cmdlist);
-
   /* Get the default SIGCHLD action.  Used while forking an inferior
      (see linux_nat_create_inferior/linux_nat_async_events).  */
   sigaction (SIGCHLD, NULL, &sigchld_default_action);
@@ -4668,8 +4630,7 @@ Tells gdb whether to control the GNU/Linux inferior in asynchronous mode."),
   sigemptyset (&async_sigchld_action.sa_mask);
   async_sigchld_action.sa_flags = SA_RESTART;
 
-  /* Install the default mode.  */
-  linux_nat_set_async_mode (linux_async_permitted);
+  linux_nat_setup_async ();
 
   add_setshow_boolean_cmd ("disable-randomization", class_support,
 			   &disable_randomization, _("\

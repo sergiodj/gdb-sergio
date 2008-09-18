@@ -147,26 +147,14 @@ static char *inferior_io_terminal;
 
 ptid_t inferior_ptid;
 
-/* Last signal that the inferior received (why it stopped).  */
-
-enum target_signal stop_signal;
-
 /* Address at which inferior stopped.  */
 
 CORE_ADDR stop_pc;
-
-/* Chain containing status of breakpoint(s) that we have stopped at.  */
-
-bpstat stop_bpstat;
 
 /* Flag indicating that a command has proceeded the inferior past the
    current breakpoint.  */
 
 int breakpoint_proceeded;
-
-/* Nonzero if stopped due to a step command.  */
-
-int stop_step;
 
 /* Nonzero if stopped due to completion of a stack dummy routine.  */
 
@@ -176,27 +164,6 @@ int stop_stack_dummy;
    process.  */
 
 int stopped_by_random_signal;
-
-/* Range to single step within.
-   If this is nonzero, respond to a single-step signal
-   by continuing to step if the pc is in this range.  */
-
-CORE_ADDR step_range_start;	/* Inclusive */
-CORE_ADDR step_range_end;	/* Exclusive */
-
-/* Stack frame address as of when stepping command was issued.
-   This is how we know when we step into a subroutine call,
-   and how to set the frame for the breakpoint used to step out.  */
-
-struct frame_id step_frame_id;
-
-enum step_over_calls_kind step_over_calls;
-
-/* If stepping, nonzero means step count is > 1
-   so don't print frame next time inferior stops
-   if it stops due to stepping.  */
-
-int step_multi;
 
 /* Environment to use for running inferior,
    in format described in environ.h.  */
@@ -503,6 +470,9 @@ run_command_1 (char *args, int from_tty, int tbreak_at_main)
 
   exec_file = (char *) get_exec_file (0);
 
+  if (non_stop && !target_supports_non_stop ())
+    error (_("The target does not support running in non-stop mode."));
+
   /* We keep symbols from add-symbol-file, on the grounds that the
      user might want to add some symbols before running the program
      (right?).  But sometimes (dynamic loading where the user manually
@@ -605,7 +575,7 @@ proceed_thread_callback (struct thread_info *thread, void *arg)
   if (!is_stopped (thread->ptid))
     return 0;
 
-  context_switch_to (thread->ptid);
+  switch_to_thread (thread->ptid);
   clear_proceed_status ();
   proceed ((CORE_ADDR) -1, TARGET_SIGNAL_DEFAULT, 0);
   return 0;
@@ -614,6 +584,8 @@ proceed_thread_callback (struct thread_info *thread, void *arg)
 void
 continue_1 (int all_threads)
 {
+  ERROR_NO_INFERIOR;
+
   if (non_stop && all_threads)
     {
       /* Don't error out if the current thread is running, because
@@ -683,9 +655,23 @@ Can't resume all threads and specify proceed count simultaneously."));
      stopped at.  */
   if (args != NULL)
     {
-      bpstat bs = stop_bpstat;
+      bpstat bs = NULL;
       int num, stat;
       int stopped = 0;
+      struct thread_info *tp;
+
+      if (non_stop)
+	tp = find_thread_pid (inferior_ptid);
+      else
+	{
+	  ptid_t last_ptid;
+	  struct target_waitstatus ws;
+
+	  get_last_target_status (&last_ptid, &ws);
+	  tp = find_thread_pid (last_ptid);
+	}
+      if (tp != NULL)
+	bs = tp->stop_bpstat;
 
       while ((stat = bpstat_num (&bs, &num)) != 0)
 	if (stat > 0)
@@ -795,21 +781,22 @@ step_1 (int skip_subroutines, int single_inst, char *count_string)
     {
       for (; count > 0; count--)
 	{
+	  struct thread_info *tp = inferior_thread ();
 	  clear_proceed_status ();
 
 	  frame = get_current_frame ();
-	  if (!frame)		/* Avoid coredump here.  Why tho? */
-	    error (_("No current frame"));
-	  step_frame_id = get_frame_id (frame);
+	  tp->step_frame_id = get_frame_id (frame);
 
 	  if (!single_inst)
 	    {
-	      find_pc_line_pc_range (stop_pc, &step_range_start, &step_range_end);
-	      if (step_range_end == 0)
+	      find_pc_line_pc_range (stop_pc,
+				     &tp->step_range_start, &tp->step_range_end);
+	      if (tp->step_range_end == 0)
 		{
 		  char *name;
-		  if (find_pc_partial_function (stop_pc, &name, &step_range_start,
-						&step_range_end) == 0)
+		  if (find_pc_partial_function (stop_pc, &name,
+						&tp->step_range_start,
+						&tp->step_range_end) == 0)
 		    error (_("Cannot find bounds of current function"));
 
 		  target_terminal_ours ();
@@ -821,21 +808,22 @@ which has no line number information.\n"), name);
 	  else
 	    {
 	      /* Say we are stepping, but stop after one insn whatever it does.  */
-	      step_range_start = step_range_end = 1;
+	      tp->step_range_start = tp->step_range_end = 1;
 	      if (!skip_subroutines)
 		/* It is stepi.
 		   Don't step over function calls, not even to functions lacking
 		   line numbers.  */
-		step_over_calls = STEP_OVER_NONE;
+		tp->step_over_calls = STEP_OVER_NONE;
 	    }
 
 	  if (skip_subroutines)
-	    step_over_calls = STEP_OVER_ALL;
+	    tp->step_over_calls = STEP_OVER_ALL;
 
-	  step_multi = (count > 1);
+	  tp->step_multi = (count > 1);
 	  proceed ((CORE_ADDR) -1, TARGET_SIGNAL_DEFAULT, 1);
 
-	  if (!stop_step)
+	  if (!target_has_execution
+	      || !inferior_thread ()->stop_step)
 	    break;
 	}
 
@@ -873,16 +861,25 @@ step_1_continuation (void *args)
 {
   struct step_1_continuation_args *a = args;
 
-  if (!step_multi || !stop_step)
+  if (target_has_execution)
     {
-      /* If we stopped for some reason that is not stepping there are
-	 no further steps to make.  Cleanup.  */
-      if (!a->single_inst || a->skip_subroutines)
-	delete_longjmp_breakpoint (a->thread);
-      step_multi = 0;
+      struct thread_info *tp;
+
+      tp = inferior_thread ();
+      if (tp->step_multi && tp->stop_step)
+	{
+	  /* There are more steps to make, and we did stop due to
+	     ending a stepping range.  Do another step.  */
+	  step_once (a->skip_subroutines, a->single_inst, a->count - 1, a->thread);
+	  return;
+	}
+      tp->step_multi = 0;
     }
-  else
-    step_once (a->skip_subroutines, a->single_inst, a->count - 1, a->thread);
+
+  /* We either stopped for some reason that is not stepping, or there
+     are no further steps to make.  Cleanup.  */
+  if (!a->single_inst || a->skip_subroutines)
+    delete_longjmp_breakpoint (a->thread);
 }
 
 /* Do just one step operation. If count >1 we will have to set up a
@@ -900,27 +897,34 @@ step_once (int skip_subroutines, int single_inst, int count, int thread)
 
   if (count > 0)
     {
+      /* Don't assume THREAD is a valid thread id.  It is set to -1 if
+	 the longjmp breakpoint was not required.  Use the
+	 INFERIOR_PTID thread instead, which is the same thread when
+	 THREAD is set.  */
+      struct thread_info *tp = inferior_thread ();
       clear_proceed_status ();
 
       frame = get_current_frame ();
       if (!frame)		/* Avoid coredump here.  Why tho? */
 	error (_("No current frame"));
-      step_frame_id = get_frame_id (frame);
+      tp->step_frame_id = get_frame_id (frame);
 
       if (!single_inst)
 	{
-	  find_pc_line_pc_range (stop_pc, &step_range_start, &step_range_end);
+	  find_pc_line_pc_range (stop_pc,
+				 &tp->step_range_start, &tp->step_range_end);
 
 	  /* If we have no line info, switch to stepi mode.  */
-	  if (step_range_end == 0 && step_stop_if_no_debug)
+	  if (tp->step_range_end == 0 && step_stop_if_no_debug)
 	    {
-	      step_range_start = step_range_end = 1;
+	      tp->step_range_start = tp->step_range_end = 1;
 	    }
-	  else if (step_range_end == 0)
+	  else if (tp->step_range_end == 0)
 	    {
 	      char *name;
-	      if (find_pc_partial_function (stop_pc, &name, &step_range_start,
-					    &step_range_end) == 0)
+	      if (find_pc_partial_function (stop_pc, &name,
+					    &tp->step_range_start,
+					    &tp->step_range_end) == 0)
 		error (_("Cannot find bounds of current function"));
 
 	      target_terminal_ours ();
@@ -932,18 +936,18 @@ which has no line number information.\n"), name);
       else
 	{
 	  /* Say we are stepping, but stop after one insn whatever it does.  */
-	  step_range_start = step_range_end = 1;
+	  tp->step_range_start = tp->step_range_end = 1;
 	  if (!skip_subroutines)
 	    /* It is stepi.
 	       Don't step over function calls, not even to functions lacking
 	       line numbers.  */
-	    step_over_calls = STEP_OVER_NONE;
+	    tp->step_over_calls = STEP_OVER_NONE;
 	}
 
       if (skip_subroutines)
-	step_over_calls = STEP_OVER_ALL;
+	tp->step_over_calls = STEP_OVER_ALL;
 
-      step_multi = (count > 1);
+      tp->step_multi = (count > 1);
       proceed ((CORE_ADDR) -1, TARGET_SIGNAL_DEFAULT, 1);
 
       args = xmalloc (sizeof (*args));
@@ -951,7 +955,7 @@ which has no line number information.\n"), name);
       args->single_inst = single_inst;
       args->count = count;
       args->thread = thread;
-      add_intermediate_continuation (step_1_continuation, args, xfree);
+      add_intermediate_continuation (tp, step_1_continuation, args, xfree);
     }
 }
 
@@ -1013,8 +1017,8 @@ jump_command (char *arg, int from_tty)
   if (sfn != NULL)
     {
       fixup_symbol_section (sfn, 0);
-      if (section_is_overlay (SYMBOL_BFD_SECTION (sfn)) &&
-	  !section_is_mapped (SYMBOL_BFD_SECTION (sfn)))
+      if (section_is_overlay (SYMBOL_OBJ_SECTION (sfn)) &&
+	  !section_is_mapped (SYMBOL_OBJ_SECTION (sfn)))
 	{
 	  if (!query ("WARNING!!!  Destination is in unmapped overlay!  Jump anyway? "))
 	    {
@@ -1140,6 +1144,7 @@ until_next_command (int from_tty)
   CORE_ADDR pc;
   struct symbol *func;
   struct symtab_and_line sal;
+  struct thread_info *tp = inferior_thread ();
 
   clear_proceed_status ();
 
@@ -1159,21 +1164,21 @@ until_next_command (int from_tty)
       if (msymbol == NULL)
 	error (_("Execution is not within a known function."));
 
-      step_range_start = SYMBOL_VALUE_ADDRESS (msymbol);
-      step_range_end = pc;
+      tp->step_range_start = SYMBOL_VALUE_ADDRESS (msymbol);
+      tp->step_range_end = pc;
     }
   else
     {
       sal = find_pc_line (pc, 0);
 
-      step_range_start = BLOCK_START (SYMBOL_BLOCK_VALUE (func));
-      step_range_end = sal.end;
+      tp->step_range_start = BLOCK_START (SYMBOL_BLOCK_VALUE (func));
+      tp->step_range_end = sal.end;
     }
 
-  step_over_calls = STEP_OVER_ALL;
-  step_frame_id = get_frame_id (frame);
+  tp->step_over_calls = STEP_OVER_ALL;
+  tp->step_frame_id = get_frame_id (frame);
 
-  step_multi = 0;		/* Only one call to proceed */
+  tp->step_multi = 0;		/* Only one call to proceed */
 
   proceed ((CORE_ADDR) -1, TARGET_SIGNAL_DEFAULT, 1);
 }
@@ -1320,7 +1325,14 @@ finish_command_continuation (void *arg)
 {
   struct finish_command_continuation_args *a = arg;
 
-  if (bpstat_find_breakpoint (stop_bpstat, a->breakpoint) != NULL
+  bpstat bs = NULL;
+
+  if (!ptid_equal (inferior_ptid, null_ptid)
+      && target_has_execution
+      && is_stopped (inferior_ptid))
+    bs = inferior_thread ()->stop_bpstat;
+
+  if (bpstat_find_breakpoint (bs, a->breakpoint) != NULL
       && a->function != NULL)
     {
       struct type *value_type;
@@ -1340,7 +1352,7 @@ finish_command_continuation (void *arg)
      next stop will be in the same thread that we started doing a
      finish on.  This suppressing (or some other replacement means)
      should be a thread property.  */
-  observer_notify_normal_stop (stop_bpstat);
+  observer_notify_normal_stop (bs);
   suppress_stop_observer = 0;
   delete_breakpoint (a->breakpoint);
 }
@@ -1366,6 +1378,7 @@ finish_command (char *arg, int from_tty)
   struct breakpoint *breakpoint;
   struct cleanup *old_chain;
   struct finish_command_continuation_args *cargs;
+  struct thread_info *tp;
 
   int async_exec = 0;
 
@@ -1395,6 +1408,8 @@ finish_command (char *arg, int from_tty)
   if (frame == 0)
     error (_("\"finish\" not meaningful in the outermost frame."));
 
+  tp = inferior_thread ();
+
   clear_proceed_status ();
 
   sal = find_pc_line (get_frame_pc (frame), 0);
@@ -1416,7 +1431,7 @@ finish_command (char *arg, int from_tty)
       print_stack_frame (get_selected_frame (NULL), 1, LOCATION);
     }
 
-  proceed_to_finish = 1;	/* We want stop_registers, please...  */
+  tp->proceed_to_finish = 1;	/* We want stop_registers, please...  */
   make_cleanup_restore_integer (&suppress_stop_observer);
   suppress_stop_observer = 1;
   proceed ((CORE_ADDR) -1, TARGET_SIGNAL_DEFAULT, 0);
@@ -1425,7 +1440,7 @@ finish_command (char *arg, int from_tty)
 
   cargs->breakpoint = breakpoint;
   cargs->function = function;
-  add_continuation (finish_command_continuation, cargs,
+  add_continuation (tp, finish_command_continuation, cargs,
 		    finish_command_continuation_free_arg);
 
   discard_cleanups (old_chain);
@@ -1437,9 +1452,10 @@ finish_command (char *arg, int from_tty)
 static void
 program_info (char *args, int from_tty)
 {
-  bpstat bs = stop_bpstat;
-  int num;
-  int stat = bpstat_num (&bs, &num);
+  bpstat bs;
+  int num, stat;
+  struct thread_info *tp;
+  ptid_t ptid;
 
   if (!target_has_execution)
     {
@@ -1447,10 +1463,27 @@ program_info (char *args, int from_tty)
       return;
     }
 
+  if (non_stop)
+    ptid = inferior_ptid;
+  else
+    {
+      struct target_waitstatus ws;
+      get_last_target_status (&ptid, &ws);
+    }
+
+  if (ptid_equal (ptid, null_ptid) || is_exited (ptid))
+    error (_("Invalid selected thread."));
+  else if (is_running (ptid))
+    error (_("Selected thread is running."));
+
+  tp = find_thread_pid (ptid);
+  bs = tp->stop_bpstat;
+  stat = bpstat_num (&bs, &num);
+
   target_files_info ();
   printf_filtered (_("Program stopped at %s.\n"),
 		   hex_string ((unsigned long) stop_pc));
-  if (stop_step)
+  if (tp->stop_step)
     printf_filtered (_("It stopped after being stepped.\n"));
   else if (stat != 0)
     {
@@ -1468,11 +1501,11 @@ It stopped at a breakpoint that has since been deleted.\n"));
 	  stat = bpstat_num (&bs, &num);
 	}
     }
-  else if (stop_signal != TARGET_SIGNAL_0)
+  else if (tp->stop_signal != TARGET_SIGNAL_0)
     {
       printf_filtered (_("It stopped with signal %s, %s.\n"),
-		       target_signal_to_name (stop_signal),
-		       target_signal_to_string (stop_signal));
+		       target_signal_to_name (tp->stop_signal),
+		       target_signal_to_string (tp->stop_signal));
     }
 
   if (!from_tty)
@@ -1778,7 +1811,7 @@ registers_info (char *addr_exp, int fpregs)
 
       /* A register name?  */
       {
-	int regnum = frame_map_name_to_regnum (frame, start, end - start);
+	int regnum = user_reg_map_name_to_regnum (gdbarch, start, end - start);
 	if (regnum >= 0)
 	  {
 	    /* User registers lie completely outside of the range of
@@ -2018,6 +2051,9 @@ attach_command (char *args, int from_tty)
      this function should probably be moved into target_pre_inferior.  */
   target_pre_inferior (from_tty);
 
+  if (non_stop && !target_supports_non_stop ())
+    error (_("Cannot attach to this target in non-stop mode"));
+
   if (args)
     {
       async_exec = strip_bg_char (&args);
@@ -2067,7 +2103,8 @@ attach_command (char *args, int from_tty)
 	  a->args = xstrdup (args);
 	  a->from_tty = from_tty;
 	  a->async_exec = async_exec;
-	  add_continuation (attach_command_continuation, a,
+	  add_continuation (inferior_thread (),
+			    attach_command_continuation, a,
 			    attach_command_continuation_free_args);
 	  return;
 	}
