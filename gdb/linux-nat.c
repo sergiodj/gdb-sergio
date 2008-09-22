@@ -1033,6 +1033,15 @@ static int linux_nat_thread_alive (ptid_t ptid);
 static char *linux_child_pid_to_exec_file (int pid);
 static int cancel_breakpoint (struct lwp_info *lp);
 
+static int
+real_WSTOPSIG (int status)
+{
+  int s = WSTOPSIG (status);
+  if (s == TRAP_IS_SYSCALL)
+    s = SIGTRAP;
+  return s;
+}
+
 
 /* Convert wait status STATUS to a string.  Used for printing debug
    messages only.  */
@@ -1044,10 +1053,10 @@ status_to_str (int status)
 
   if (WIFSTOPPED (status))
     snprintf (buf, sizeof (buf), "%s (stopped)",
-	      strsignal (WSTOPSIG (status)));
+	      strsignal (real_WSTOPSIG (status)));
   else if (WIFSIGNALED (status))
     snprintf (buf, sizeof (buf), "%s (terminated)",
-	      strsignal (WSTOPSIG (status)));
+	      strsignal (real_WSTOPSIG (status)));
   else
     snprintf (buf, sizeof (buf), "%d (exited)", WEXITSTATUS (status));
 
@@ -1289,7 +1298,7 @@ linux_nat_post_attach_wait (ptid_t ptid, int first, int *cloned,
 
   gdb_assert (pid == new_pid && WIFSTOPPED (status));
 
-  if (WSTOPSIG (status) != SIGSTOP)
+  if (real_WSTOPSIG (status) != SIGSTOP)
     {
       *signalled = 1;
       if (debug_linux_nat)
@@ -1348,7 +1357,7 @@ lin_lwp_attach_lwp (ptid_t ptid)
       lp->stopped = 1;
       lp->cloned = cloned;
       lp->signalled = signalled;
-      if (WSTOPSIG (status) != SIGSTOP)
+      if (real_WSTOPSIG (status) != SIGSTOP)
 	{
 	  lp->resumed = 1;
 	  lp->status = status;
@@ -1534,7 +1543,7 @@ get_pending_status (struct lwp_info *lp, int *status)
 	  if (queued_waitpid (GET_LWP (lp->ptid), status, __WALL) != -1)
 	    {
 	      if (WIFSTOPPED (status))
-		signo = target_signal_from_host (WSTOPSIG (status));
+		signo = target_signal_from_host (real_WSTOPSIG (status));
 
 	      /* If not stopped, then the lwp is gone, no use in
 		 resending a signal.  */
@@ -1596,7 +1605,7 @@ detach_callback (struct lwp_info *lp, void *data)
 
   if (debug_linux_nat && lp->status)
     fprintf_unfiltered (gdb_stdlog, "DC:  Pending %s for %s on detach.\n",
-			strsignal (WSTOPSIG (lp->status)),
+			strsignal (real_WSTOPSIG (lp->status)),
 			target_pid_to_str (lp->ptid));
 
   /* If there is a pending SIGSTOP, get rid of it.  */
@@ -1622,7 +1631,7 @@ detach_callback (struct lwp_info *lp, void *data)
 
       errno = 0;
       if (ptrace (PTRACE_DETACH, GET_LWP (lp->ptid), 0,
-		  WSTOPSIG (status)) < 0)
+		  real_WSTOPSIG (status)) < 0)
 	error (_("Can't detach %s: %s"), target_pid_to_str (lp->ptid),
 	       safe_strerror (errno));
 
@@ -1630,7 +1639,7 @@ detach_callback (struct lwp_info *lp, void *data)
 	fprintf_unfiltered (gdb_stdlog,
 			    "PTRACE_DETACH (%s, %s, 0) (OK)\n",
 			    target_pid_to_str (lp->ptid),
-			    strsignal (WSTOPSIG (lp->status)));
+			    strsignal (real_WSTOPSIG (lp->status)));
 
       delete_lwp (lp->ptid);
     }
@@ -1668,7 +1677,7 @@ linux_nat_detach (char *args, int from_tty)
       /* Put the signal number in ARGS so that inf_ptrace_detach will
 	 pass it along with PTRACE_DETACH.  */
       args = alloca (8);
-      sprintf (args, "%d", (int) WSTOPSIG (status));
+      sprintf (args, "%d", (int) real_WSTOPSIG (status));
       fprintf_unfiltered (gdb_stdlog,
 			  "LND: Sending signal %s to %s\n",
 			  args,
@@ -1791,7 +1800,7 @@ linux_nat_resume (ptid_t ptid, int step, enum target_signal signo)
 
   if (lp->status && WIFSTOPPED (lp->status))
     {
-      int saved_signo = target_signal_from_host (WSTOPSIG (lp->status));
+      int saved_signo = target_signal_from_host (real_WSTOPSIG (lp->status));
 
       if (signal_stop_state (saved_signo) == 0
 	  && signal_print_state (saved_signo) == 0
@@ -1942,7 +1951,7 @@ linux_handle_extended_wait (struct lwp_info *lp, int status,
 	  new_lp->cloned = 1;
 	  new_lp->stopped = 1;
 
-	  if (WSTOPSIG (status) != SIGSTOP)
+	  if (real_WSTOPSIG (status) != SIGSTOP)
 	    {
 	      /* This can happen if someone starts sending signals to
 		 the new thread before it gets a chance to run, which
@@ -1989,7 +1998,7 @@ linux_handle_extended_wait (struct lwp_info *lp, int status,
 	      new_lp->stopped = 0;
 	      new_lp->resumed = 1;
 	      ptrace (PTRACE_CONT, new_pid, 0,
-		      status ? WSTOPSIG (status) : 0);
+		      status ? real_WSTOPSIG (status) : 0);
 	    }
 
 	  if (debug_linux_nat)
@@ -2097,7 +2106,7 @@ wait_lwp (struct lwp_info *lp)
   gdb_assert (WIFSTOPPED (status));
 
   /* Handle GNU/Linux's extended waitstatus for trace events.  */
-  if (WIFSTOPPED (status) && WSTOPSIG (status) == SIGTRAP && status >> 16 != 0)
+  if (WIFSTOPPED (status) && real_WSTOPSIG (status) == SIGTRAP && status >> 16 != 0)
     {
       if (debug_linux_nat)
 	fprintf_unfiltered (gdb_stdlog,
@@ -2183,7 +2192,7 @@ set_ignore_sigint (struct lwp_info *lp, void *data)
   /* If a thread has a pending SIGINT, consume it; otherwise, set a
      flag to consume the next one.  */
   if (lp->stopped && lp->status != 0 && WIFSTOPPED (lp->status)
-      && WSTOPSIG (lp->status) == SIGINT)
+      && real_WSTOPSIG (lp->status) == SIGINT)
     lp->status = 0;
   else
     lp->ignore_sigint = 1;
@@ -2227,7 +2236,7 @@ stop_wait_callback (struct lwp_info *lp, void *data)
 	return 0;
 
       if (lp->ignore_sigint && WIFSTOPPED (status)
-	  && WSTOPSIG (status) == SIGINT)
+	  && real_WSTOPSIG (status) == SIGINT)
 	{
 	  lp->ignore_sigint = 0;
 
@@ -2244,9 +2253,9 @@ stop_wait_callback (struct lwp_info *lp, void *data)
 
       maybe_clear_ignore_sigint (lp);
 
-      if (WSTOPSIG (status) != SIGSTOP)
+      if (real_WSTOPSIG (status) != SIGSTOP)
 	{
-	  if (WSTOPSIG (status) == SIGTRAP)
+	  if (real_WSTOPSIG (status) == SIGTRAP)
 	    {
 	      /* If a LWP other than the LWP that we're reporting an
 	         event for has hit a GDB breakpoint (as opposed to
@@ -2295,7 +2304,7 @@ stop_wait_callback (struct lwp_info *lp, void *data)
 					    "SWC: kill %s, %s\n",
 					    target_pid_to_str (lp->ptid),
 					    status_to_str ((int) status));
-		      kill_lwp (GET_LWP (lp->ptid), WSTOPSIG (status));
+		      kill_lwp (GET_LWP (lp->ptid), real_WSTOPSIG (status));
 		    }
 		}
 	      else
@@ -2311,7 +2320,7 @@ stop_wait_callback (struct lwp_info *lp, void *data)
 					    "SWC: kill %s, %s\n",
 					    target_pid_to_str (lp->ptid),
 					    status_to_str ((int) status));
-		      kill_lwp (GET_LWP (lp->ptid), WSTOPSIG (lp->status));
+		      kill_lwp (GET_LWP (lp->ptid), real_WSTOPSIG (lp->status));
 		    }
 		  /* Save the sigtrap event. */
 		  lp->status = status;
@@ -2355,7 +2364,7 @@ stop_wait_callback (struct lwp_info *lp, void *data)
 					  target_pid_to_str (lp->ptid),
 					  status_to_str ((int) status));
 		    }
-		  kill_lwp (GET_LWP (lp->ptid), WSTOPSIG (status));
+		  kill_lwp (GET_LWP (lp->ptid), real_WSTOPSIG (status));
 		}
 	      else
 		lp->status = status;
@@ -2403,7 +2412,7 @@ count_events_callback (struct lwp_info *lp, void *data)
 
   /* Count only resumed LWPs that have a SIGTRAP event pending.  */
   if (lp->status != 0 && lp->resumed
-      && WIFSTOPPED (lp->status) && WSTOPSIG (lp->status) == SIGTRAP)
+      && WIFSTOPPED (lp->status) && real_WSTOPSIG (lp->status) == SIGTRAP)
     (*count)++;
 
   return 0;
@@ -2431,7 +2440,7 @@ select_event_lwp_callback (struct lwp_info *lp, void *data)
 
   /* Select only resumed LWPs that have a SIGTRAP event pending. */
   if (lp->status != 0 && lp->resumed
-      && WIFSTOPPED (lp->status) && WSTOPSIG (lp->status) == SIGTRAP)
+      && WIFSTOPPED (lp->status) && real_WSTOPSIG (lp->status) == SIGTRAP)
     if ((*selector)-- == 0)
       return 1;
 
@@ -2492,7 +2501,7 @@ cancel_breakpoints_callback (struct lwp_info *lp, void *data)
      tripped on it.  */
 
   if (lp->status != 0
-      && WIFSTOPPED (lp->status) && WSTOPSIG (lp->status) == SIGTRAP
+      && WIFSTOPPED (lp->status) && real_WSTOPSIG (lp->status) == SIGTRAP
       && cancel_breakpoint (lp))
     /* Throw away the SIGTRAP.  */
     lp->status = 0;
@@ -2627,7 +2636,7 @@ linux_nat_filter_event (int lwpid, int status, int options)
 	lp->cloned = 1;
 
       gdb_assert (WIFSTOPPED (status)
-		  && WSTOPSIG (status) == SIGSTOP);
+		  && real_WSTOPSIG (status) == SIGSTOP);
       lp->signalled = 1;
 
       if (!in_thread_list (inferior_ptid))
@@ -2642,15 +2651,15 @@ linux_nat_filter_event (int lwpid, int status, int options)
 
   /* Save the trap's siginfo in case we need it later.  */
   if (WIFSTOPPED (status)
-      && (WSTOPSIG (status) == SIGTRAP || WSTOPSIG (status) == (SIGTRAP | 0x80)))
+      && (real_WSTOPSIG (status) == SIGTRAP || WSTOPSIG (status) == TRAP_IS_SYSCALL))
     save_siginfo (lp);
 
   /* Handle GNU/Linux's extended waitstatus for trace events.
      It is necessary to check if WSTOPSIG is signaling a that
      the inferior is entering/exiting a system call. */
   if (WIFSTOPPED (status)
-      && ((WSTOPSIG (status) == (SIGTRAP | 0x80))
-          || (WSTOPSIG (status) == SIGTRAP && status >> 16 != 0)))
+      && ((WSTOPSIG (status) == TRAP_IS_SYSCALL)
+          || (real_WSTOPSIG (status) == SIGTRAP && status >> 16 != 0)))
     {
       if (debug_linux_nat)
 	fprintf_unfiltered (gdb_stdlog,
@@ -2716,7 +2725,7 @@ linux_nat_filter_event (int lwpid, int status, int options)
   /* Make sure we don't report a SIGSTOP that we sent ourselves in
      an attempt to stop an LWP.  */
   if (lp->signalled
-      && WIFSTOPPED (status) && WSTOPSIG (status) == SIGSTOP)
+      && WIFSTOPPED (status) && real_WSTOPSIG (status) == SIGSTOP)
     {
       if (debug_linux_nat)
 	fprintf_unfiltered (gdb_stdlog,
@@ -2747,7 +2756,7 @@ linux_nat_filter_event (int lwpid, int status, int options)
   /* Make sure we don't report a SIGINT that we have already displayed
      for another thread.  */
   if (lp->ignore_sigint
-      && WIFSTOPPED (status) && WSTOPSIG (status) == SIGINT)
+      && WIFSTOPPED (status) && real_WSTOPSIG (status) == SIGINT)
     {
       if (debug_linux_nat)
 	fprintf_unfiltered (gdb_stdlog,
@@ -3029,7 +3038,7 @@ retry:
 
   if (WIFSTOPPED (status))
     {
-      int signo = target_signal_from_host (WSTOPSIG (status));
+      int signo = target_signal_from_host (real_WSTOPSIG (status));
 
       /* If we get a signal while single-stepping, we may need special
 	 care, e.g. to skip the signal handler.  Defer to common code.  */
@@ -3101,7 +3110,7 @@ retry:
      the comment in cancel_breakpoints_callback to find out why.  */
   iterate_over_lwps (cancel_breakpoints_callback, lp);
 
-  if (WIFSTOPPED (status) && WSTOPSIG (status) == SIGTRAP)
+  if (WIFSTOPPED (status) && real_WSTOPSIG (status) == SIGTRAP)
     {
       if (debug_linux_nat)
 	fprintf_unfiltered (gdb_stdlog,
