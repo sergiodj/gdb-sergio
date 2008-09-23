@@ -1542,8 +1542,8 @@ get_pending_status (struct lwp_info *lp, int *status)
 	     queue.  */
 	  if (queued_waitpid (GET_LWP (lp->ptid), status, __WALL) != -1)
 	    {
-	      if (WIFSTOPPED (status))
-		signo = target_signal_from_host (real_WSTOPSIG (status));
+	      if (WIFSTOPPED (*status))
+		signo = target_signal_from_host (real_WSTOPSIG (*status));
 
 	      /* If not stopped, then the lwp is gone, no use in
 		 resending a signal.  */
@@ -1895,22 +1895,6 @@ linux_handle_extended_wait (struct lwp_info *lp, int status,
   struct lwp_info *new_lp = NULL;
   int event = status >> 16;
 
-  /* Used for 'catch syscall' feature. */
-  if (WSTOPSIG (status) == TRAP_IS_SYSCALL)
-    {
-      struct regcache *regcache = get_thread_regcache (lp->ptid);
-      struct gdbarch *gdbarch = get_regcache_arch (regcache);
-      struct thread_info *th_info = find_thread_pid (lp->ptid);
-
-      ourstatus->kind = 
-        (th_info->syscall_state == TARGET_WAITKIND_SYSCALL_ENTRY) ?
-         TARGET_WAITKIND_SYSCALL_RETURN : TARGET_WAITKIND_SYSCALL_ENTRY;
-      th_info->syscall_state = ourstatus->kind;
-      ourstatus->value.syscall_number =
-        (int) gdbarch_get_syscall_number (gdbarch, lp->ptid);
-      return 0;
-    }
-
   if (event == PTRACE_EVENT_FORK || event == PTRACE_EVENT_VFORK
       || event == PTRACE_EVENT_CLONE)
     {
@@ -2037,6 +2021,23 @@ linux_handle_extended_wait (struct lwp_info *lp, int status,
 	 parent on a vfork, because detach_breakpoints would think
 	 that breakpoints are not inserted.  */
       mark_breakpoints_out ();
+      return 0;
+    }
+
+  /* Used for 'catch syscall' feature. */
+  if (catch_syscall_enabled ()
+      && WSTOPSIG (status) == TRAP_IS_SYSCALL)
+    {
+      struct regcache *regcache = get_thread_regcache (lp->ptid);
+      struct gdbarch *gdbarch = get_regcache_arch (regcache);
+      struct thread_info *th_info = find_thread_pid (lp->ptid);
+
+      ourstatus->kind = 
+        (th_info->syscall_state == TARGET_WAITKIND_SYSCALL_ENTRY) ?
+         TARGET_WAITKIND_SYSCALL_RETURN : TARGET_WAITKIND_SYSCALL_ENTRY;
+      th_info->syscall_state = ourstatus->kind;
+      ourstatus->value.syscall_number =
+        (int) gdbarch_get_syscall_number (gdbarch, lp->ptid);
       return 0;
     }
 
