@@ -2025,19 +2025,23 @@ linux_handle_extended_wait (struct lwp_info *lp, int status,
     }
 
   /* Used for 'catch syscall' feature. */
-  if (catch_syscall_enabled ()
-      && WSTOPSIG (status) == TRAP_IS_SYSCALL)
+  if (WSTOPSIG (status) == TRAP_IS_SYSCALL)
     {
-      struct regcache *regcache = get_thread_regcache (lp->ptid);
-      struct gdbarch *gdbarch = get_regcache_arch (regcache);
-      struct thread_info *th_info = find_thread_pid (lp->ptid);
+      if (catch_syscall_enabled () == 0)
+          ourstatus->kind = TARGET_WAITKIND_IGNORE;
+      else
+        {
+          struct regcache *regcache = get_thread_regcache (lp->ptid);
+          struct gdbarch *gdbarch = get_regcache_arch (regcache);
+          struct thread_info *th_info = find_thread_pid (lp->ptid);
 
-      ourstatus->kind = 
-        (th_info->syscall_state == TARGET_WAITKIND_SYSCALL_ENTRY) ?
-         TARGET_WAITKIND_SYSCALL_RETURN : TARGET_WAITKIND_SYSCALL_ENTRY;
-      th_info->syscall_state = ourstatus->kind;
-      ourstatus->value.syscall_number =
-        (int) gdbarch_get_syscall_number (gdbarch, lp->ptid);
+          ourstatus->kind = 
+            (th_info->syscall_state == TARGET_WAITKIND_SYSCALL_ENTRY) ?
+            TARGET_WAITKIND_SYSCALL_RETURN : TARGET_WAITKIND_SYSCALL_ENTRY;
+          th_info->syscall_state = ourstatus->kind;
+          ourstatus->value.syscall_number =
+            (int) gdbarch_get_syscall_number (gdbarch, lp->ptid);
+        }
       return 0;
     }
 
