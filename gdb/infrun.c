@@ -2016,10 +2016,6 @@ handle_inferior_event (struct execution_control_state *ecs)
       set_internalvar (lookup_internalvar ("_exitcode"),
 		       value_from_longest (builtin_type_int,
 					   (LONGEST) ecs->ws.value.integer));
-
-      /* Disabling the tracesysgood flag. We don't need it anymore. */
-      target_disable_tracesysgood (ecs->ptid);
-
       gdb_flush (gdb_stdout);
       target_mourn_inferior ();
       singlestep_breakpoints_inserted_p = 0;
@@ -2039,9 +2035,6 @@ handle_inferior_event (struct execution_control_state *ecs)
          really fatal on some systems.  If that's true, then some changes
          may be needed. */
       target_mourn_inferior ();
-
-      /* Disabling the tracesysgood flag. We don't need it anymore. */
-      target_disable_tracesysgood (ecs->ptid);
 
       print_stop_reason (SIGNAL_EXITED, ecs->ws.value.sig);
       singlestep_breakpoints_inserted_p = 0;

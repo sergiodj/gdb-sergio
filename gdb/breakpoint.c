@@ -4711,6 +4711,7 @@ create_entry_breakpoint ()
   b = create_internal_breakpoint (entry_addr, bp_entry_breakpoint);
 
   b->enable_state = bp_enabled;
+  b->disposition = disp_del;
   /* addr_string has to be used or breakpoint_re_set will delete me. */
   b->addr_string = xstrprintf ("AT_ENTRY (0x%s)", paddr (entry_addr));
 

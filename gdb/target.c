@@ -435,7 +435,6 @@ update_current_target (void)
       INHERIT (to_insert_syscall_catchpoint, t);
       INHERIT (to_remove_syscall_catchpoint, t);
       INHERIT (to_enable_tracesysgood, t);
-      INHERIT (to_disable_tracesysgood, t);
       INHERIT (to_has_exited, t);
       INHERIT (to_mourn_inferior, t);
       INHERIT (to_can_run, t);
