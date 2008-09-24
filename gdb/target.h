@@ -398,6 +398,7 @@ struct target_ops
     void (*to_insert_syscall_catchpoint) (int);
     int (*to_remove_syscall_catchpoint) (int);
     void (*to_enable_tracesysgood) (ptid_t);
+    void (*to_disable_tracesysgood) (ptid_t);
     int (*to_has_exited) (int, int, int *);
     void (*to_mourn_inferior) (void);
     int (*to_can_run) (void);
@@ -891,6 +892,9 @@ int target_follow_fork (int follow_child);
 
 #define target_enable_tracesysgood(ptid) \
      (*current_target.to_enable_tracesysgood) (ptid)
+
+#define target_disable_tracesysgood(ptid) \
+     (*current_target.to_disable_tracesysgood) (ptid)
 
 
 /* Returns TRUE if PID has exited.  And, also sets EXIT_STATUS to the

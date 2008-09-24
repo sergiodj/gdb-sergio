@@ -696,6 +696,22 @@ linux_enable_tracesysgood (ptid_t ptid)
   ptrace (PTRACE_SETOPTIONS, pid, 0, current_ptrace_options);
 }
 
+static void
+linux_disable_tracesysgood (ptid_t ptid)
+{
+  int pid = ptid_get_lwp (ptid);
+
+  if (pid == 0)
+    pid = ptid_get_pid (ptid);
+
+  if (linux_supports_tracesysgood (pid) == 0)
+    return;
+
+  current_ptrace_options &= ~PTRACE_O_TRACESYSGOOD;
+
+  ptrace (PTRACE_SETOPTIONS, pid, 0, current_ptrace_options);
+}
+
 static int
 linux_passed_by_entrypoint (void)
 {
@@ -4098,6 +4114,7 @@ linux_target_install_ops (struct target_ops *t)
   t->to_make_corefile_notes = linux_nat_make_corefile_notes;
 
   t->to_enable_tracesysgood = linux_enable_tracesysgood;
+  t->to_disable_tracesysgood = linux_disable_tracesysgood;
   t->to_passed_by_entrypoint = linux_passed_by_entrypoint;
 
   super_xfer_partial = t->to_xfer_partial;
