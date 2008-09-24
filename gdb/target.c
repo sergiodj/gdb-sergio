@@ -605,9 +605,6 @@ update_current_target (void)
   de_fault (to_enable_tracesysgood,
             (void (*) (ptid_t))
             tcomplain);
-  de_fault (to_disable_tracesysgood,
-            (void (*) (ptid_t))
-            tcomplain);
   de_fault (to_has_exited,
 	    (int (*) (int, int, int *))
 	    return_zero);
