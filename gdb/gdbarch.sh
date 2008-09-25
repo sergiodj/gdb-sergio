@@ -708,6 +708,20 @@ m:int:target_signal_to_host:enum target_signal ts:ts::default_target_signal_to_h
 
 # Record architecture-specific information from the symbol table.
 M:void:record_special_symbol:struct objfile *objfile, asymbol *sym:objfile, sym
+
+# Functions for the 'catch syscall' feature.
+
+# Get architecture-specific system calls information from registers.
+M:LONGEST:get_syscall_number:ptid_t ptid:ptid
+
+# Translate a syscall number to its corresponding name.
+M:const char *:syscall_name_from_number:int syscall_number:syscall_number
+
+# Translate a syscall name to its corresponding number.
+#
+# This function must return the syscall number if found, or
+# UNKNOWN_SYSCALL if not found.
+M:int:syscall_number_from_name:const char *syscall_name:syscall_name
 EOF
 }
 
@@ -888,6 +902,9 @@ done
 
 # close it off
 cat <<EOF
+
+/* Definition for an unknown syscall, used basically in error-cases. */
+#define UNKNOWN_SYSCALL (-1)
 
 extern struct gdbarch_tdep *gdbarch_tdep (struct gdbarch *gdbarch);
 

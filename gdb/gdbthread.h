@@ -171,14 +171,6 @@ struct thread_info
   /* Private data used by the target vector implementation.  */
   struct private_thread_info *private;
 
-  /* Syscall information for the thread */
-
-  /* This variable will be used to signal wether we
-   are in a 'catch syscall' command.
-   Nonzero if we are, zero otherwise. */
-
-  int catching_syscalls;
-
   /* Signal wether we are in a SYSCALL_ENTRY or
      in a SYSCALL_RETURN event.
      Values:

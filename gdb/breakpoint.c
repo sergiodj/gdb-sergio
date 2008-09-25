@@ -315,10 +315,6 @@ static int overlay_events_enabled;
 	     B ? (TMP=B->global_next, 1): 0;	\
 	     B = TMP)
 
-/* A number to represent wether we are catching any syscalls. */
-
-#define CATCHING_ANY_SYSCALL (-1)
-
 /* True if breakpoint hit counts should be displayed in breakpoint info.  */
 
 int show_breakpoint_hit_counts = 1;
@@ -2351,7 +2347,8 @@ print_it_typical (bpstat bs)
     case bp_entry_breakpoint:
        /* Not sure how we will get here. 
 	 GDB should not stop for these breakpoints.  */
-      printf_filtered (_("Entry Breakpoint: gdb should not stop!\n"));
+      internal_error (__FILE__, __LINE__,
+                      _("Entry Breakpoint: gdb should not stop!\n"));
       return PRINT_NOTHING;
       break;    
 
@@ -2403,7 +2400,7 @@ print_it_typical (bpstat bs)
 
     case bp_catch_syscall:
       annotate_catchpoint (b->number);
-      printf_filtered (_("\nCatchpoint %d (%s syscall '%s()'), "),
+      printf_filtered (_("\nCatchpoint %d (%s syscall '%s ()'), "),
 		       b->number,
                        (th_info->syscall_state == TARGET_WAITKIND_SYSCALL_ENTRY)
                         ? "called" : "returned from",
@@ -3804,16 +3801,12 @@ print_one_breakpoint_location (struct breakpoint *b,
 	  ui_out_field_skip (uiout, "addr");
 	annotate_field (5);
         ui_out_text (uiout, "syscall \"");
-        if (b->syscall_number >= 0)
-          {
-            ui_out_field_string (uiout, "what",
-                                 gdbarch_syscall_name_from_number (current_gdbarch,
-                                                                   b->syscall_number));
-          }
+        if (b->syscall_number != UNKNOWN_SYSCALL)
+          ui_out_field_string (uiout, "what",
+                       gdbarch_syscall_name_from_number (current_gdbarch,
+                                                         b->syscall_number));
         else
-          {
-            ui_out_field_string (uiout, "what", "<any syscall>");
-          }
+            ui_out_field_string (uiout, "what", "<unknown syscall>");
         ui_out_text (uiout, "\" ");
 	break;
 
@@ -4702,10 +4695,14 @@ disable_overlay_breakpoints (void)
 int
 create_entry_breakpoint ()
 {
-  CORE_ADDR entry_addr;
+  CORE_ADDR taddr, entry_addr;
   struct breakpoint *b;
 
-  entry_addr = entry_point_address ();
+  taddr = entry_point_address ();
+  /* Make certain that the address points at real code, and not a
+     function descriptor.  */
+  entry_addr = gdbarch_convert_from_func_ptr_addr (current_gdbarch, taddr,
+                                                   &current_target);
 
   /* Setting the breakpoint */
   b = create_internal_breakpoint (entry_addr, bp_entry_breakpoint);
@@ -4934,6 +4931,8 @@ create_syscall_event_catchpoint (int tempflag, int syscall_number)
   b->cond_string = NULL;
   b->thread = thread;
   b->syscall_to_be_caught = syscall_number;
+  /* We still don't know the syscall that will be caught :-). */
+  b->syscall_number = UNKNOWN_SYSCALL;
   b->addr_string = NULL;
   b->enable_state = bp_enabled;
   b->disposition = tempflag ? disp_del : disp_donttouch;
@@ -5160,11 +5159,11 @@ mention (struct breakpoint *b)
 			 b->number);
 	break;
       case bp_catch_syscall:
-        if (b->syscall_to_be_caught != -1)
-          printf_filtered (_("Catchpoint %d (syscall '%s()')"),
+        if (b->syscall_to_be_caught != CATCHING_ANY_SYSCALL)
+          printf_filtered (_("Catchpoint %d (syscall '%s ()')"),
                            b->number,
                            gdbarch_syscall_name_from_number (current_gdbarch,
-                                                             b->syscall_to_be_caught));
+                                                    b->syscall_to_be_caught));
         else
           printf_filtered (_("Catchpoint %d (syscall)"),
                            b->number);
@@ -6953,10 +6952,8 @@ catch_syscall_command_1 (char *arg, int from_tty, struct cmd_list_element *comma
     {
       syscall_number = gdbarch_syscall_number_from_name (current_gdbarch,
                                                          (const char *) arg);
-      if (syscall_number < 0)
-        {
-          error (_("Invalid syscall name '%s'."), arg);
-        }
+      if (syscall_number == UNKNOWN_SYSCALL)
+        error (_("Invalid syscall name '%s'."), arg);
     }
 
   /* Now let's create the catchpoint */
@@ -8387,7 +8384,8 @@ single_step_breakpoint_inserted_here_p (CORE_ADDR pc)
 
 /* Returns 0 if 'bp' is NOT a syscall catchpoint,
    non-zero otherwise. */
-static int is_syscall_catchpoint_enabled (struct breakpoint *bp)
+static int
+is_syscall_catchpoint_enabled (struct breakpoint *bp)
 {
   if (bp->type == bp_catch_syscall
       && bp->enable_state != bp_disabled
@@ -8397,36 +8395,28 @@ static int is_syscall_catchpoint_enabled (struct breakpoint *bp)
     return 0;
 }
 
-int catch_syscall_enabled (void)
+int
+catch_syscall_enabled (void)
 {
   struct breakpoint *bp;
 
   ALL_BREAKPOINTS (bp)
-    {
-      if (is_syscall_catchpoint_enabled (bp))
-        {
-          return 1;
-        }
-    }
+    if (is_syscall_catchpoint_enabled (bp))
+      return 1;
 
   return 0;
 }
 
-int catching_syscall_number (int syscall_number)
+int
+catching_syscall_number (int syscall_number)
 {
   struct breakpoint *bp;
 
   ALL_BREAKPOINTS (bp)
-    {
-      if (is_syscall_catchpoint_enabled (bp))
-        {
-          if (bp->syscall_to_be_caught == syscall_number
-              || bp->syscall_to_be_caught == CATCHING_ANY_SYSCALL)
-            {
-              return 1;
-            }
-        }
-    }
+    if (is_syscall_catchpoint_enabled (bp))
+      if (bp->syscall_to_be_caught == syscall_number
+          || bp->syscall_to_be_caught == CATCHING_ANY_SYSCALL)
+        return 1;
 
   return 0;
 }

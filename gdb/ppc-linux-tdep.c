@@ -1142,101 +1142,78 @@ ppc_linux_trap_reg_p (struct gdbarch *gdbarch)
 /* Return the current system call's number present in the
    r0 register. When the function fails, it returns -1. */
 LONGEST
-ppc_linux_get_syscall_number (ptid_t ptid)
+ppc_linux_get_syscall_number (struct gdbarch *gdbarch,
+                              ptid_t ptid)
 {
-  struct regcache *regcache;
-  struct gdbarch *gdbarch;
-  struct gdbarch_tdep *tdep;
+  struct regcache *regcache = get_thread_regcache (ptid);
+  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
   /* The content of a register */
-  gdb_byte buf[4];
+  gdb_byte *buf;
+  /* The result */
+  LONGEST ret;
 
-  regcache = get_thread_regcache (ptid);
-  gdbarch = get_regcache_arch (regcache);
-  tdep = gdbarch_tdep (gdbarch);
+  /* Make sure we're in a 32- or 64-bit machine */
+  gdb_assert (tdep->wordsize == 4 || tdep->wordsize == 8);
 
-  /* Make sure we're in a 32-bit machine */
-  gdb_assert (tdep->wordsize == 4);
+  buf = (gdb_byte *) xmalloc (tdep->wordsize * sizeof (gdb_byte));
 
   /* Getting the system call number from the register.
      When dealing with PowerPC architecture, this information
      is stored at 0th register. */
   regcache_cooked_read (regcache, tdep->ppc_gp0_regnum, buf);
 
-  return extract_signed_integer (buf, 4);
-}
+  ret = extract_signed_integer (buf, tdep->wordsize);
+  xfree (buf);
 
-/* Return the current system call's number present in the
-   r0 register. When the function fails, it returns -1. */
-LONGEST
-ppc64_linux_get_syscall_number (ptid_t ptid)
-{
-  struct regcache *regcache;
-  struct gdbarch *gdbarch;
-  struct gdbarch_tdep *tdep;
-  /* The content of a register */
-  gdb_byte buf[8];
-
-  regcache = get_thread_regcache (ptid);
-  gdbarch = get_regcache_arch (regcache);
-  tdep = gdbarch_tdep (gdbarch);
-
-  /* Make sure we're in a 64-bit machine */
-  gdb_assert (tdep->wordsize == 8);
-
-  /* Getting the system call number from the register.
-     When dealing with PowerPC architecture, this information
-     is stored at 0th register. */
-  regcache_cooked_read (regcache, tdep->ppc_gp0_regnum, buf);
-
-  return extract_signed_integer (buf, 8);
+  return ret;
 }
 
 const char *
-ppc_linux_syscall_name_from_number (int syscall_number)
+ppc_linux_syscall_name_from_number (struct gdbarch *gdbarch,
+                                    int syscall_number)
 {
+  if (syscall_number < 0
+      || syscall_number >= N_SYSCALLS)
+    return NULL;
+
   return syscalls_names[syscall_number];
 }
 
 const char *
-ppc64_linux_syscall_name_from_number (int syscall_number)
+ppc64_linux_syscall_name_from_number (struct gdbarch *gdbarch,
+                                      int syscall_number)
 {
+  if (syscall_number < 0
+      || syscall_number >= N_SYSCALLS)
+    return NULL;
+
   return syscalls_names64[syscall_number];
 }
 
 int
-ppc_linux_syscall_number_from_name (const char *syscall_name)
+ppc_linux_syscall_number_from_name (struct gdbarch *gdbarch,
+                                    const char *syscall_name)
 {
-  int ret = -1;
   int i;
 
   for (i = 0; i < N_SYSCALLS; i++)
-    {
-      if (strcmp (syscall_name, syscalls_names[i]) == 0)
-        {
-          ret = i;
-          break;
-        }
-    }
+    if (strcmp (syscall_name, syscalls_names[i]) == 0)
+      return i;
 
-  return ret;
+  return UNKNOWN_SYSCALL;
 }
 
 int
-ppc64_linux_syscall_number_from_name (const char *syscall_name)
+ppc64_linux_syscall_number_from_name (struct gdbarch *gdbarch,
+                                      const char *syscall_name)
 {
-  int ret = -1;
   int i;
 
   for (i = 0; i < N_SYSCALLS; i++)
-    {
-      if (strcmp (syscall_name, syscalls_names64[i]) == 0)
-        {
-          ret = i;
-          break;
-        }
-    }
+    if (strcmp (syscall_name, syscalls_names64[i]) == 0)
+      return i;
 
-  return ret;
+  return UNKNOWN_SYSCALL;
 }
 
 static void
@@ -1310,9 +1287,10 @@ ppc_linux_init_abi (struct gdbarch_info info,
   /* Handle inferior calls during interrupted system calls.  */
   set_gdbarch_write_pc (gdbarch, ppc_linux_write_pc);
 
+  set_gdbarch_get_syscall_number (gdbarch, ppc_linux_get_syscall_number);
+
   if (tdep->wordsize == 4)
     {
-      set_gdbarch_get_syscall_number (gdbarch, ppc_linux_get_syscall_number);
       set_gdbarch_syscall_name_from_number (gdbarch, ppc_linux_syscall_name_from_number);
       set_gdbarch_syscall_number_from_name (gdbarch, ppc_linux_syscall_number_from_name);
 
@@ -1340,7 +1318,6 @@ ppc_linux_init_abi (struct gdbarch_info info,
   
   if (tdep->wordsize == 8)
     {
-      set_gdbarch_get_syscall_number (gdbarch, ppc64_linux_get_syscall_number);
       set_gdbarch_syscall_name_from_number (gdbarch, ppc64_linux_syscall_name_from_number);
       set_gdbarch_syscall_number_from_name (gdbarch, ppc64_linux_syscall_number_from_name);
 
@@ -1374,7 +1351,6 @@ ppc_linux_init_abi (struct gdbarch_info info,
   /* Enable TLS support.  */
   set_gdbarch_fetch_tls_load_module_address (gdbarch,
                                              svr4_fetch_objfile_link_map);
-
 
   if (tdesc_data)
     {

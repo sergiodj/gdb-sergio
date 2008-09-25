@@ -33,6 +33,11 @@ struct block;
 
 #define	BREAKPOINT_MAX	16
 
+
+/* A number to represent wether we are catching any syscalls. */
+
+#define CATCHING_ANY_SYSCALL (-1)
+
 /* Type of breakpoint. */
 /* FIXME In the future, we should fold all other breakpoint-like things into
    here.  This includes:
@@ -464,8 +469,8 @@ struct breakpoint
     char *exec_pathname;
 
     /* Syscall number used for the 'catch syscall' feature.
-       If no syscall has been called, its value is less than zero.
-       Otherwise, it holds the system call number in the host.
+       If no syscall has been called, its value is UNKNOWN_SYSCALL.
+       Otherwise, it holds the system call number in the target.
 
        This field is only valid immediately after this catchpoint has
        triggered.  */
@@ -475,7 +480,7 @@ struct breakpoint
        (i.e., when the user types "catch syscall <SYSCALL_NAME>".
 
        It stores the syscall number in case we are in the "filter mode",
-       or -1 otherwise. */
+       or CATCHING_ANY_SYSCALL otherwise. */
     int syscall_to_be_caught;
 
     /* Methods associated with this breakpoint.  */
@@ -559,10 +564,8 @@ enum bpstat_what_main_action
        resume out of the dynamic linker's callback, stop and print.  */
     BPSTAT_WHAT_CHECK_SHLIBS_RESUME_FROM_HOOK,
 
-    /* Enable the PTRACE_O_TRACESYSGOOD options for the inferior if the
-       user wants to (i.e., if the user enabled the "catch syscall").
-       The flag can be enabled now because we are sure that we are outside
-       the ld.so. */
+    /* This internal breakpoint is used syscall catchpoints only after the
+       shell and the dynamic linker have already ran. */
     BPSTAT_WHAT_ENTRY_BREAKPOINT,
 
     /* This is just used to keep track of how many enums there are.  */

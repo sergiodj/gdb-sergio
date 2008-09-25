@@ -627,7 +627,7 @@ linux_test_for_tracefork (int original_pid)
 
 /* Determine if PTRACE_O_TRACESYSGOOD can be used to follow syscalls.
 
-   First, we try to enable syscall tracing on ORIGINAL_PID. If this fails,
+   We try to enable syscall tracing on ORIGINAL_PID. If this fails,
    we know that the feature is not available. This may change the tracing
    options for ORIGINAL_PID, but we'll be setting them shortly anyway. */
 
@@ -649,8 +649,8 @@ linux_test_for_tracesysgood (int original_pid)
   linux_nat_async_events (async_events_original_state);
 }
 
-/* Determine wether we support PTRACE_O_TRACESYSGOOD
- * option available. This function also sets */
+/* Determine wether we support PTRACE_O_TRACESYSGOOD option available.
+   This function also sets linux_supports_tracesysgood_flag. */
 
 static int
 linux_supports_tracesysgood (int pid)
@@ -738,6 +738,11 @@ linux_child_post_startup_inferior (ptid_t ptid)
 {
   linux_enable_event_reporting (ptid);
   check_for_thread_db ();
+  /* We have to create the entry breakpoint here because
+     if we have 'catch syscall' enabled, we ought to know
+     when to enable PTRACE_O_TRACESYSGOOD. Otherwise, we would
+     start catching syscalls from ld.so/libc (which is not
+     what we want). */
   create_entry_breakpoint ();
 }
 
