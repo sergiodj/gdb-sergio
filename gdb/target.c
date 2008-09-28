@@ -199,11 +199,6 @@ struct target_ops current_target;
 
 static struct cmd_list_element *targetlist = NULL;
 
-/* Nonzero if we are debugging an attached outside process
-   rather than an inferior.  */
-
-int attach_flag;
-
 /* Nonzero if we should trust readonly sections from the
    executable when reading memory.  */
 
@@ -2169,7 +2164,7 @@ target_supports_non_stop ()
 static int
 default_region_ok_for_hw_watchpoint (CORE_ADDR addr, int len)
 {
-  return (len <= TYPE_LENGTH (builtin_type_void_data_ptr));
+  return (len <= gdbarch_ptr_bit (target_gdbarch) / TARGET_CHAR_BIT);
 }
 
 static int
@@ -2354,9 +2349,17 @@ void
 generic_mourn_inferior (void)
 {
   extern int show_breakpoint_hit_counts;
+  ptid_t ptid;
 
+  ptid = inferior_ptid;
   inferior_ptid = null_ptid;
-  attach_flag = 0;
+
+  if (!ptid_equal (ptid, null_ptid))
+    {
+      int pid = ptid_get_pid (ptid);
+      delete_inferior (pid);
+    }
+
   breakpoint_init_inferior (inf_exited);
   registers_changed ();
 

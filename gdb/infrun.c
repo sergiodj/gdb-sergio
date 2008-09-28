@@ -230,13 +230,6 @@ show_stop_on_solib_events (struct ui_file *file, int from_tty,
 
 int stop_after_trap;
 
-/* Nonzero means expecting a trap and caller will handle it themselves.
-   It is used after attach, due to attaching to a process;
-   when running in the shell before the child program has been exec'd;
-   and when running some kinds of remote stuff (FIXME?).  */
-
-enum stop_kind stop_soon;
-
 /* Save register contents here when about to pop a stack dummy frame,
    if-and-only-if proceed_to_finish is set.
    Thus this contains the return value from the called function (assuming
@@ -338,7 +331,6 @@ follow_inferior_reset_breakpoints (void)
 static void
 follow_exec (ptid_t pid, char *execd_pathname)
 {
-  ptid_t saved_pid = pid;
   struct target_ops *tgt;
   struct thread_info *th = inferior_thread ();
 
@@ -377,9 +369,8 @@ follow_exec (ptid_t pid, char *execd_pathname)
      inferior has essentially been killed & reborn. */
 
   gdb_flush (gdb_stdout);
-  generic_mourn_inferior ();
-  /* Because mourn_inferior resets inferior_ptid. */
-  inferior_ptid = saved_pid;
+
+  breakpoint_init_inferior (inf_execd);
 
   if (gdb_sysroot && *gdb_sysroot)
     {
@@ -1102,7 +1093,10 @@ clear_proceed_status (void)
 {
   if (!ptid_equal (inferior_ptid, null_ptid))
     {
-      struct thread_info *tp = inferior_thread ();
+      struct thread_info *tp;
+      struct inferior *inferior;
+
+      tp = inferior_thread ();
 
       tp->trap_expected = 0;
       tp->step_range_start = 0;
@@ -1117,10 +1111,12 @@ clear_proceed_status (void)
       /* Discard any remaining commands or status from previous
 	 stop.  */
       bpstat_clear (&tp->stop_bpstat);
+
+      inferior = current_inferior ();
+      inferior->stop_soon = NO_STOP_QUIETLY;
     }
 
   stop_after_trap = 0;
-  stop_soon = NO_STOP_QUIETLY;
   breakpoint_proceeded = 1;	/* We're about to proceed... */
 
   if (stop_registers)
@@ -1356,8 +1352,11 @@ proceed (CORE_ADDR addr, enum target_signal siggnal, int step)
 void
 start_remote (int from_tty)
 {
+  struct inferior *inferior;
   init_wait_for_inferior ();
-  stop_soon = STOP_QUIETLY_REMOTE;
+
+  inferior = current_inferior ();
+  inferior->stop_soon = STOP_QUIETLY_REMOTE;
 
   /* Always go on waiting for the target, regardless of the mode. */
   /* FIXME: cagney/1999-09-23: At present it isn't possible to
@@ -1573,8 +1572,6 @@ wait_for_inferior (int treat_exec_as_sigtrap)
       else
 	ecs->ptid = target_wait (waiton_ptid, &ecs->ws);
 
-      ecs->event_thread = find_thread_pid (ecs->ptid);
-
       if (treat_exec_as_sigtrap && ecs->ws.kind == TARGET_WAITKIND_EXECD)
         {
           xfree (ecs->ws.value.execd_pathname);
@@ -1650,16 +1647,17 @@ fetch_inferior_event (void *client_data)
        thread.  */
     context_switch (ecs->ptid);
 
-  ecs->event_thread = find_thread_pid (ecs->ptid);
-
   /* Now figure out what to do with the result of the result.  */
   handle_inferior_event (ecs);
 
   if (!ecs->wait_some_more)
     {
+      struct inferior *inf = find_inferior_pid (ptid_get_pid (ecs->ptid));
+
       delete_step_thread_step_resume_breakpoint ();
 
-      if (stop_soon == NO_STOP_QUIETLY)
+      /* We may not find an inferior if this was a process exit.  */
+      if (inf == NULL || inf->stop_soon == NO_STOP_QUIETLY)
 	normal_stop ();
 
       if (target_has_execution
@@ -1893,6 +1891,18 @@ handle_inferior_event (struct execution_control_state *ecs)
   int stopped_by_watchpoint;
   int stepped_after_stopped_by_watchpoint = 0;
   struct symtab_and_line stop_pc_sal;
+  enum stop_kind stop_soon;
+
+  if (ecs->ws.kind != TARGET_WAITKIND_EXITED
+      && ecs->ws.kind != TARGET_WAITKIND_SIGNALLED
+      && ecs->ws.kind != TARGET_WAITKIND_IGNORE)
+    {
+      struct inferior *inf = find_inferior_pid (ptid_get_pid (ecs->ptid));
+      gdb_assert (inf);
+      stop_soon = inf->stop_soon;
+    }
+  else
+    stop_soon = NO_STOP_QUIETLY;
 
   breakpoint_retire_moribund ();
 
@@ -1903,10 +1913,6 @@ handle_inferior_event (struct execution_control_state *ecs)
   /* Always clear state belonging to the previous time we stopped.  */
   stop_stack_dummy = 0;
 
-  adjust_pc_after_break (ecs);
-
-  reinit_frame_cache ();
-
   /* If it's a new process, add it to the thread database */
 
   ecs->new_thread_event = (!ptid_equal (ecs->ptid, inferior_ptid)
@@ -1916,6 +1922,14 @@ handle_inferior_event (struct execution_control_state *ecs)
   if (ecs->ws.kind != TARGET_WAITKIND_EXITED
       && ecs->ws.kind != TARGET_WAITKIND_SIGNALLED && ecs->new_thread_event)
     add_thread (ecs->ptid);
+
+  ecs->event_thread = find_thread_pid (ecs->ptid);
+
+  /* Dependent on valid ECS->EVENT_THREAD.  */
+  adjust_pc_after_break (ecs);
+
+  /* Dependent on the current PC value modified by adjust_pc_after_break.  */
+  reinit_frame_cache ();
 
   if (ecs->ws.kind != TARGET_WAITKIND_IGNORE)
     {
@@ -2055,7 +2069,7 @@ handle_inferior_event (struct execution_control_state *ecs)
       /* Record the exit code in the convenience variable $_exitcode, so
          that the user can inspect this again later.  */
       set_internalvar (lookup_internalvar ("_exitcode"),
-		       value_from_longest (builtin_type_int,
+		       value_from_longest (builtin_type_int32,
 					   (LONGEST) ecs->ws.value.integer));
       gdb_flush (gdb_stdout);
       target_mourn_inferior ();
@@ -2122,31 +2136,22 @@ handle_inferior_event (struct execution_control_state *ecs)
 	savestring (ecs->ws.value.execd_pathname,
 		    strlen (ecs->ws.value.execd_pathname));
 
-      /* This causes the eventpoints and symbol table to be reset.  Must
-         do this now, before trying to determine whether to stop. */
-      follow_exec (inferior_ptid, pending_follow.execd_pathname);
-      xfree (pending_follow.execd_pathname);
-
-      stop_pc = regcache_read_pc (get_thread_regcache (ecs->ptid));
-
-      {
-	/* The breakpoints module may need to touch the inferior's
-	   memory.  Switch to the (stopped) event ptid
-	   momentarily.  */
-	ptid_t saved_inferior_ptid = inferior_ptid;
-	inferior_ptid = ecs->ptid;
-
-	ecs->event_thread->stop_bpstat = bpstat_stop_status (stop_pc, ecs->ptid);
-
-	ecs->random_signal = !bpstat_explains_signal (ecs->event_thread->stop_bpstat);
-	inferior_ptid = saved_inferior_ptid;
-      }
-
       if (!ptid_equal (ecs->ptid, inferior_ptid))
 	{
 	  context_switch (ecs->ptid);
 	  reinit_frame_cache ();
 	}
+
+      stop_pc = read_pc ();
+
+      /* This causes the eventpoints and symbol table to be reset.
+         Must do this now, before trying to determine whether to
+         stop.  */
+      follow_exec (inferior_ptid, pending_follow.execd_pathname);
+      xfree (pending_follow.execd_pathname);
+
+      ecs->event_thread->stop_bpstat = bpstat_stop_status (stop_pc, ecs->ptid);
+      ecs->random_signal = !bpstat_explains_signal (ecs->event_thread->stop_bpstat);
 
       /* If no catchpoint triggered for this, then keep going.  */
       if (ecs->random_signal)
@@ -2725,7 +2730,10 @@ process_event_stop_test:
 	  target_terminal_ours_for_output ();
 	  print_stop_reason (SIGNAL_RECEIVED, ecs->event_thread->stop_signal);
 	}
-      if (signal_stop_state (ecs->event_thread->stop_signal))
+      /* Always stop on signals if we're just gaining control of the
+	 program.  */
+      if (stop_soon != NO_STOP_QUIETLY
+	  || signal_stop_state (ecs->event_thread->stop_signal))
 	{
 	  stop_stepping (ecs);
 	  return;
@@ -4034,9 +4042,7 @@ hook_stop_stub (void *cmd)
 int
 signal_stop_state (int signo)
 {
-  /* Always stop on signals if we're just gaining control of the
-     program.  */
-  return signal_stop[signo] || stop_soon != NO_STOP_QUIETLY;
+  return signal_stop[signo];
 }
 
 int
@@ -4438,6 +4444,7 @@ save_inferior_status (int restore_stack_info)
 {
   struct inferior_status *inf_status = XMALLOC (struct inferior_status);
   struct thread_info *tp = inferior_thread ();
+  struct inferior *inf = current_inferior ();
 
   inf_status->stop_signal = tp->stop_signal;
   inf_status->stop_pc = stop_pc;
@@ -4450,7 +4457,7 @@ save_inferior_status (int restore_stack_info)
   inf_status->step_frame_id = tp->step_frame_id;
   inf_status->step_over_calls = tp->step_over_calls;
   inf_status->stop_after_trap = stop_after_trap;
-  inf_status->stop_soon = stop_soon;
+  inf_status->stop_soon = inf->stop_soon;
   /* Save original bpstat chain here; replace it with copy of chain.
      If caller's caller is walking the chain, they'll be happier if we
      hand them back the original chain when restore_inferior_status is
@@ -4492,6 +4499,7 @@ void
 restore_inferior_status (struct inferior_status *inf_status)
 {
   struct thread_info *tp = inferior_thread ();
+  struct inferior *inf = current_inferior ();
 
   tp->stop_signal = inf_status->stop_signal;
   stop_pc = inf_status->stop_pc;
@@ -4504,7 +4512,7 @@ restore_inferior_status (struct inferior_status *inf_status)
   tp->step_frame_id = inf_status->step_frame_id;
   tp->step_over_calls = inf_status->step_over_calls;
   stop_after_trap = inf_status->stop_after_trap;
-  stop_soon = inf_status->stop_soon;
+  inf->stop_soon = inf_status->stop_soon;
   bpstat_clear (&tp->stop_bpstat);
   tp->stop_bpstat = inf_status->stop_bpstat;
   breakpoint_proceeded = inf_status->breakpoint_proceeded;

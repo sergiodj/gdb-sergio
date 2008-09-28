@@ -251,7 +251,7 @@ evaluate_subexp_modula2 (struct type *expect_type, struct expression *exp,
 	    arg1 = value_cast (type, arg1);
 
 	  type = check_typedef (value_type (arg1));
-	  return value_ind (value_add (arg1, arg2));
+	  return value_ind (value_ptradd (arg1, arg2));
 	}
       else
 	if (TYPE_CODE (type) != TYPE_CODE_ARRAY)
@@ -273,7 +273,7 @@ evaluate_subexp_modula2 (struct type *expect_type, struct expression *exp,
     }
 
  nosideret:
-  return value_from_longest (builtin_type_long, (LONGEST) 1);
+  return value_from_longest (builtin_type_int8, (LONGEST) 1);
 }
 
 
@@ -345,6 +345,9 @@ m2_language_arch_info (struct gdbarch *gdbarch,
     = builtin->builtin_real;
   lai->primitive_type_vector [m2_primitive_type_bool]
     = builtin->builtin_bool;
+
+  lai->bool_type_symbol = "BOOLEAN";
+  lai->bool_type_default = builtin->builtin_bool;
 }
 
 const struct exp_descriptor exp_descriptor_modula2 = 

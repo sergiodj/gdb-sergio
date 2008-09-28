@@ -49,12 +49,12 @@ set bp_location [gdb_get_line_number "STOP" ${testdir}/comp_bug.adb]
 runto "comp_bug.adb:$bp_location"
 
 gdb_test "print x" \
-         "\\(exists => true, value => 10\\)" \
+         "= \\(exists => true, value => 10\\)" \
          "print x"
 
 gdb_test "ptype x" \
          [multi_line "type = record" \
-                     "    exists: range false \\.\\. true;" \
+                     "    exists: (boolean|range false \\.\\. true);" \
                      "    case exists is" \
                      "        when true =>" \
                      "            value: range 0 \\.\\. 255;" \

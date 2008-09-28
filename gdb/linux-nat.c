@@ -791,6 +791,10 @@ linux_child_follow_fork (struct target_ops *ops, int follow_child)
       else
 	{
 	  struct fork_info *fp;
+
+	  /* Add process to GDB's tables.  */
+	  add_inferior (child_pid);
+
 	  /* Retain child fork in ptrace (stopped) state.  */
 	  fp = find_fork_pid (child_pid);
 	  if (!fp)
@@ -902,7 +906,10 @@ linux_child_follow_fork (struct target_ops *ops, int follow_child)
 	 safely resume it.  */
 
       if (has_vforked)
-	linux_parent_pid = parent_pid;
+	{
+	  linux_parent_pid = parent_pid;
+	  detach_inferior (parent_pid);
+	}
       else if (!detach_fork)
 	{
 	  struct fork_info *fp;
@@ -916,6 +923,7 @@ linux_child_follow_fork (struct target_ops *ops, int follow_child)
 	target_detach (NULL, 0);
 
       inferior_ptid = ptid_build (child_pid, child_pid, 0);
+      add_inferior (child_pid);
 
       /* Reinstall ourselves, since we might have been removed in
 	 target_detach (which does other necessary cleanup).  */
@@ -1796,9 +1804,17 @@ linux_nat_resume (ptid_t ptid, int step, enum target_signal signo)
 
   if (lp->status && WIFSTOPPED (lp->status))
     {
-      int saved_signo = target_signal_from_host (WSTOPSIG (lp->status));
+      int saved_signo;
+      struct inferior *inf;
 
-      if (signal_stop_state (saved_signo) == 0
+      inf = find_inferior_pid (ptid_get_pid (ptid));
+      gdb_assert (inf);
+      saved_signo = target_signal_from_host (WSTOPSIG (lp->status));
+
+      /* Defer to common code if we're gaining control of the
+	 inferior.  */
+      if (inf->stop_soon == NO_STOP_QUIETLY
+	  && signal_stop_state (saved_signo) == 0
 	  && signal_print_state (saved_signo) == 0
 	  && signal_pass_state (saved_signo) == 1)
 	{
@@ -3040,10 +3056,17 @@ retry:
   if (WIFSTOPPED (status))
     {
       int signo = target_signal_from_host (WSTOPSIG (status));
+      struct inferior *inf;
 
-      /* If we get a signal while single-stepping, we may need special
-	 care, e.g. to skip the signal handler.  Defer to common code.  */
+      inf = find_inferior_pid (ptid_get_pid (lp->ptid));
+      gdb_assert (inf);
+
+      /* Defer to common code if we get a signal while
+	 single-stepping, since that may need special care, e.g. to
+	 skip the signal handler, or, if we're gaining control of the
+	 inferior.  */
       if (!lp->step
+	  && inf->stop_soon == NO_STOP_QUIETLY
 	  && signal_stop_state (signo) == 0
 	  && signal_print_state (signo) == 0
 	  && signal_pass_state (signo) == 1)
@@ -3068,18 +3091,24 @@ retry:
 	  goto retry;
 	}
 
-      if (signo == TARGET_SIGNAL_INT && signal_pass_state (signo) == 0)
+      if (!non_stop)
 	{
-	  /* If ^C/BREAK is typed at the tty/console, SIGINT gets
-	     forwarded to the entire process group, that is, all LWPs
-	     will receive it - unless they're using CLONE_THREAD to
-	     share signals.  Since we only want to report it once, we
-	     mark it as ignored for all LWPs except this one.  */
-	  iterate_over_lwps (set_ignore_sigint, NULL);
-	  lp->ignore_sigint = 0;
+	  /* Only do the below in all-stop, as we currently use SIGINT
+	     to implement target_stop (see linux_nat_stop) in
+	     non-stop.  */
+	  if (signo == TARGET_SIGNAL_INT && signal_pass_state (signo) == 0)
+	    {
+	      /* If ^C/BREAK is typed at the tty/console, SIGINT gets
+		 forwarded to the entire process group, that is, all LWPs
+		 will receive it - unless they're using CLONE_THREAD to
+		 share signals.  Since we only want to report it once, we
+		 mark it as ignored for all LWPs except this one.  */
+	      iterate_over_lwps (set_ignore_sigint, NULL);
+	      lp->ignore_sigint = 0;
+	    }
+	  else
+	    maybe_clear_ignore_sigint (lp);
 	}
-      else
-	maybe_clear_ignore_sigint (lp);
     }
 
   /* This LWP is stopped now.  */

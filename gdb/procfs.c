@@ -160,7 +160,6 @@ static int
 procfs_auxv_parse (struct target_ops *ops, gdb_byte **readptr,
                   gdb_byte *endptr, CORE_ADDR *typep, CORE_ADDR *valp)
 {
-  const int pointer_size = TYPE_LENGTH (builtin_type_void_data_ptr);
   gdb_byte *ptr = *readptr;
 
   if (endptr == ptr)
@@ -2899,11 +2898,11 @@ proc_parent_pid (procinfo *pi)
 static void *
 procfs_address_to_host_pointer (CORE_ADDR addr)
 {
+  struct type *ptr_type = builtin_type (target_gdbarch)->builtin_data_ptr;
   void *ptr;
 
-  gdb_assert (sizeof (ptr) == TYPE_LENGTH (builtin_type_void_data_ptr));
-  gdbarch_address_to_pointer (current_gdbarch, builtin_type_void_data_ptr,
-			      &ptr, addr);
+  gdb_assert (sizeof (ptr) == TYPE_LENGTH (ptr_type));
+  gdbarch_address_to_pointer (target_gdbarch, ptr_type, &ptr, addr);
   return ptr;
 }
 
@@ -3635,13 +3634,13 @@ static void
 procfs_detach (char *args, int from_tty)
 {
   int sig = 0;
+  int pid = PIDGET (inferior_ptid);
 
   if (args)
     sig = atoi (args);
 
   if (from_tty)
     {
-      int pid = PIDGET (inferior_ptid);
       char *exec_file;
 
       exec_file = get_exec_file (0);
@@ -3656,6 +3655,7 @@ procfs_detach (char *args, int from_tty)
   do_detach (sig);
 
   inferior_ptid = null_ptid;
+  detach_inferior (pid);
   unpush_target (&procfs_ops);
 }
 
@@ -3663,6 +3663,7 @@ static ptid_t
 do_attach (ptid_t ptid)
 {
   procinfo *pi;
+  struct inferior *inf;
   int fail;
   int lwpid;
 
@@ -3712,8 +3713,9 @@ do_attach (ptid_t ptid)
   if ((fail = procfs_debug_inferior (pi)) != 0)
     dead_procinfo (pi, "do_attach: failed in procfs_debug_inferior", NOKILL);
 
+  inf = add_inferior (pi->pid);
   /* Let GDB know that the inferior was attached.  */
-  attach_flag = 1;
+  inf->attach_flag = 1;
 
   /* Create a procinfo for the current lwp.  */
   lwpid = proc_get_current_thread (pi);
@@ -3767,7 +3769,6 @@ do_detach (int signo)
 	  proc_warn (pi, "do_detach, set_rlc", __LINE__);
       }
 
-  attach_flag = 0;
   destroy_procinfo (pi);
 }
 
@@ -4073,6 +4074,8 @@ wait_again:
 		  }
 		else if (syscall_is_exit (pi, what))
 		  {
+		    struct inferior *inf;
+
 		    /* Handle SYS_exit call only */
 		    /* Stopped at entry to SYS_exit.
 		       Make it runnable, resume it, then use
@@ -4086,7 +4089,9 @@ wait_again:
 		       TARGET_WAITKIND_SPURIOUS.  */
 		    if (!proc_run_process (pi, 0, 0))
 		      proc_error (pi, "target_wait, run_process", __LINE__);
-		    if (attach_flag)
+
+		    inf = find_inferior_pid (pi->pid);
+		    if (inf->attach_flag)
 		      {
 			/* Don't call wait: simulate waiting for exit,
 			   return a "success" exit code.  Bogus: what if
@@ -4685,8 +4690,9 @@ procfs_notice_signals (ptid_t ptid)
 static void
 procfs_files_info (struct target_ops *ignore)
 {
+  struct inferior *inf = current_inferior ();
   printf_filtered (_("\tUsing the running image of %s %s via /proc.\n"),
-		   attach_flag? "attached": "child",
+		   inf->attach_flag? "attached": "child",
 		   target_pid_to_str (inferior_ptid));
 }
 
@@ -5352,7 +5358,8 @@ procfs_can_use_hw_breakpoint (int type, int cnt, int othertype)
      procfs_address_to_host_pointer will reveal that an internal error
      will be generated when the host and target pointer sizes are
      different.  */
-  if (sizeof (void *) != TYPE_LENGTH (builtin_type_void_data_ptr))
+  struct type *ptr_type = builtin_type (target_gdbarch)->builtin_data_ptr;
+  if (sizeof (void *) != TYPE_LENGTH (ptr_type))
     return 0;
 
   /* Other tests here???  */

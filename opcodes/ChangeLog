@@ -1,3 +1,21 @@
+2008-09-26  Florian Krohm  <fkrohm@us.ibm.com>
+
+	* s390-opc.txt (thder, thdr): Change RRE_RR to RRE_FF.
+	(cfxr, cfdr, cfer, clclu): Add esa flag.
+	(sqd): Instruction added.
+	(qadtr, qaxtr): Change RRF_FFFU to RRF_FUFF.
+	* s390-opc.c: (INSTR_RRF_FFFU, MASK_RRF_FFFU): Removed.
+
+2008-09-14  Arnold Metselaar  <arnold.metselaar@planet.nl>
+
+	* z80-dis.c (prt_rr_nn): Fix register pair for two byte opcodes.
+	(tab_elt opc_ed): Add "ld r,a" and "ld r,a" instructions.
+
+2008-09-11  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* i386-opc.tbl: Fix memory operand size for cmpXXXs[sd].
+	* i386-tbl.h: Regenerated.
+
 2008-08-28  Jan Beulich  <jbeulich@novell.com>
 
 	* i386-dis.c (dis386): Adjust far return mnemonics.

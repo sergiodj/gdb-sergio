@@ -22,6 +22,7 @@
 #include "regcache.h"
 #include "gdbcmd.h"
 #include "infcall.h"
+#include "objfiles.h"
 #include "gdb_assert.h"
 #include "gdb_string.h"
 #include "linux-fork.h"
@@ -209,6 +210,7 @@ init_fork_list (void)
   for (fp = fork_list; fp; fp = fpnext)
     {
       fpnext = fp->next;
+      delete_inferior (ptid_get_pid (fp->ptid));
       free_fork (fp);
     }
 
@@ -368,6 +370,8 @@ linux_fork_mourn_inferior (void)
      We need to delete that one from the fork_list, and switch
      to the next available fork.  */
   delete_fork (inferior_ptid);
+  /* Delete process from GDB's inferior list.  */
+  delete_inferior (ptid_get_pid (inferior_ptid));
 
   /* There should still be a fork - if there's only one left,
      delete_fork won't remove it, because we haven't updated
@@ -407,6 +411,8 @@ delete_fork_command (char *args, int from_tty)
     printf_filtered (_("Killed %s\n"), target_pid_to_str (ptid));
 
   delete_fork (ptid);
+  /* Delete process from GDB's inferior list.  */
+  delete_inferior (ptid_get_pid (ptid));
 }
 
 static void
@@ -431,6 +437,8 @@ detach_fork_command (char *args, int from_tty)
     printf_filtered (_("Detached %s\n"), target_pid_to_str (ptid));
 
   delete_fork (ptid);
+  /* Delete process from GDB's process table.  */
+  detach_inferior (ptid_get_pid (ptid));
 }
 
 /* Print information about currently known forks.  */
@@ -528,6 +536,8 @@ save_detach_fork (int *saved_val)
 static void
 checkpoint_command (char *args, int from_tty)
 {
+  struct objfile *fork_objf;
+  struct gdbarch *gdbarch;
   struct target_waitstatus last_target_waitstatus;
   ptid_t last_target_ptid;
   struct value *fork_fn = NULL, *ret;
@@ -545,14 +555,15 @@ checkpoint_command (char *args, int from_tty)
   /* Make the inferior fork, record its (and gdb's) state.  */
 
   if (lookup_minimal_symbol ("fork", NULL, NULL) != NULL)
-    fork_fn = find_function_in_inferior ("fork");
+    fork_fn = find_function_in_inferior ("fork", &fork_objf);
   if (!fork_fn)
     if (lookup_minimal_symbol ("_fork", NULL, NULL) != NULL)
-      fork_fn = find_function_in_inferior ("fork");
+      fork_fn = find_function_in_inferior ("fork", &fork_objf);
   if (!fork_fn)
     error (_("checkpoint: can't find fork function in inferior."));
 
-  ret = value_from_longest (builtin_type_int, 0);
+  gdbarch = get_objfile_arch (fork_objf);
+  ret = value_from_longest (builtin_type (gdbarch)->builtin_int, 0);
   old_chain = save_detach_fork (&temp_detach_fork);
   detach_fork = 0;
   ret = call_function_by_hand (fork_fn, 0, &ret);

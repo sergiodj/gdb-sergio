@@ -101,9 +101,10 @@ Unwinding of stack if a signal is received while in a call dummy is %s.\n"),
    its value as needed).  */
 
 static struct value *
-value_arg_coerce (struct value *arg, struct type *param_type,
-		  int is_prototyped, CORE_ADDR *sp)
+value_arg_coerce (struct gdbarch *gdbarch, struct value *arg,
+		  struct type *param_type, int is_prototyped, CORE_ADDR *sp)
 {
+  const struct builtin_type *builtin = builtin_type (gdbarch);
   struct type *arg_type = check_typedef (value_type (arg));
   struct type *type
     = param_type ? check_typedef (param_type) : arg_type;
@@ -142,22 +143,22 @@ value_arg_coerce (struct value *arg, struct type *param_type,
       /* If we don't have a prototype, coerce to integer type if necessary.  */
       if (!is_prototyped)
 	{
-	  if (TYPE_LENGTH (type) < TYPE_LENGTH (builtin_type_int))
-	    type = builtin_type_int;
+	  if (TYPE_LENGTH (type) < TYPE_LENGTH (builtin->builtin_int))
+	    type = builtin->builtin_int;
 	}
       /* Currently all target ABIs require at least the width of an integer
          type for an argument.  We may have to conditionalize the following
          type coercion for future targets.  */
-      if (TYPE_LENGTH (type) < TYPE_LENGTH (builtin_type_int))
-	type = builtin_type_int;
+      if (TYPE_LENGTH (type) < TYPE_LENGTH (builtin->builtin_int))
+	type = builtin->builtin_int;
       break;
     case TYPE_CODE_FLT:
       if (!is_prototyped && coerce_float_to_double_p)
 	{
-	  if (TYPE_LENGTH (type) < TYPE_LENGTH (builtin_type_double))
-	    type = builtin_type_double;
-	  else if (TYPE_LENGTH (type) > TYPE_LENGTH (builtin_type_double))
-	    type = builtin_type_long_double;
+	  if (TYPE_LENGTH (type) < TYPE_LENGTH (builtin->builtin_double))
+	    type = builtin->builtin_double;
+	  else if (TYPE_LENGTH (type) > TYPE_LENGTH (builtin->builtin_double))
+	    type = builtin->builtin_long_double;
 	}
       break;
     case TYPE_CODE_FUNC:
@@ -200,7 +201,7 @@ find_function_addr (struct value *function, struct type **retval_type)
 {
   struct type *ftype = check_typedef (value_type (function));
   enum type_code code = TYPE_CODE (ftype);
-  struct type *value_type;
+  struct type *value_type = NULL;
   CORE_ADDR funaddr;
 
   /* If it's a member function, just look at the function
@@ -224,8 +225,6 @@ find_function_addr (struct value *function, struct type **retval_type)
 							&current_target);
 	  value_type = TYPE_TARGET_TYPE (ftype);
 	}
-      else
-	value_type = builtin_type_int;
     }
   else if (code == TYPE_CODE_INT)
     {
@@ -252,8 +251,6 @@ find_function_addr (struct value *function, struct type **retval_type)
 	    /* Handle integer used as address of a function.  */
 	    funaddr = (CORE_ADDR) value_as_long (function);
 	}
-
-      value_type = builtin_type_int;
     }
   else
     error (_("Invalid data type for function to be called."));
@@ -273,43 +270,6 @@ breakpoint_auto_delete_contents (void *arg)
     breakpoint_auto_delete (inferior_thread ()->stop_bpstat);
 }
 
-static CORE_ADDR
-generic_push_dummy_code (struct gdbarch *gdbarch,
-			 CORE_ADDR sp, CORE_ADDR funaddr,
-			 struct value **args, int nargs,
-			 struct type *value_type,
-			 CORE_ADDR *real_pc, CORE_ADDR *bp_addr,
-			 struct regcache *regcache)
-{
-  /* Something here to findout the size of a breakpoint and then
-     allocate space for it on the stack.  */
-  int bplen;
-  /* This code assumes frame align.  */
-  gdb_assert (gdbarch_frame_align_p (gdbarch));
-  /* Force the stack's alignment.  The intent is to ensure that the SP
-     is aligned to at least a breakpoint instruction's boundary.  */
-  sp = gdbarch_frame_align (gdbarch, sp);
-  /* Allocate space for, and then position the breakpoint on the
-     stack.  */
-  if (gdbarch_inner_than (gdbarch, 1, 2))
-    {
-      CORE_ADDR bppc = sp;
-      gdbarch_breakpoint_from_pc (gdbarch, &bppc, &bplen);
-      sp = gdbarch_frame_align (gdbarch, sp - bplen);
-      (*bp_addr) = sp;
-      /* Should the breakpoint size/location be re-computed here?  */
-    }      
-  else
-    {
-      (*bp_addr) = sp;
-      gdbarch_breakpoint_from_pc (gdbarch, bp_addr, &bplen);
-      sp = gdbarch_frame_align (gdbarch, sp + bplen);
-    }
-  /* Inferior resumes at the function entry point.  */
-  (*real_pc) = funaddr;
-  return sp;
-}
-
 /* For CALL_DUMMY_ON_STACK, push a breakpoint sequence that the called
    function returns to.  */
 
@@ -321,14 +281,11 @@ push_dummy_code (struct gdbarch *gdbarch,
 		 CORE_ADDR *real_pc, CORE_ADDR *bp_addr,
 		 struct regcache *regcache)
 {
-  if (gdbarch_push_dummy_code_p (gdbarch))
-    return gdbarch_push_dummy_code (gdbarch, sp, funaddr,
-				    args, nargs, value_type, real_pc, bp_addr,
-				    regcache);
-  else    
-    return generic_push_dummy_code (gdbarch, sp, funaddr,
-				    args, nargs, value_type, real_pc, bp_addr,
-				    regcache);
+  gdb_assert (gdbarch_push_dummy_code_p (gdbarch));
+
+  return gdbarch_push_dummy_code (gdbarch, sp, funaddr,
+				  args, nargs, value_type, real_pc, bp_addr,
+				  regcache);
 }
 
 /* All this stuff with a dummy frame may seem unnecessarily complicated
@@ -472,6 +429,9 @@ call_function_by_hand (struct value *function, int nargs, struct value **args)
   }
 
   funaddr = find_function_addr (function, &values_type);
+  if (!values_type)
+    values_type = builtin_type (gdbarch)->builtin_int;
+
   CHECK_TYPEDEF (values_type);
 
   /* Are we returning a value using a structure return (passing a
@@ -592,7 +552,8 @@ call_function_by_hand (struct value *function, int nargs, struct value **args)
 	else
 	  param_type = NULL;
 
-	args[i] = value_arg_coerce (args[i], param_type, prototyped, &sp);
+	args[i] = value_arg_coerce (gdbarch, args[i],
+				    param_type, prototyped, &sp);
 
 	if (param_type != NULL && language_pass_by_reference (param_type))
 	  args[i] = value_addr (args[i]);

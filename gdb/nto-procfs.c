@@ -494,8 +494,10 @@ procfs_meminfo (char *args, int from_tty)
 static void
 procfs_files_info (struct target_ops *ignore)
 {
+  struct inferior *inf = current_inferior ();
+
   printf_unfiltered ("\tUsing the running image of %s %s via %s.\n",
-		     attach_flag ? "attached" : "child",
+		     pi->attach_flag ? "attached" : "child",
 		     target_pid_to_str (inferior_ptid), nto_procfs_path);
 }
 
@@ -512,6 +514,7 @@ procfs_attach (char *args, int from_tty)
 {
   char *exec_file;
   int pid;
+  struct inferior *inf;
 
   if (!args)
     error_no_arg (_("process-id to attach"));
@@ -535,8 +538,12 @@ procfs_attach (char *args, int from_tty)
       gdb_flush (gdb_stdout);
     }
   inferior_ptid = do_attach (pid_to_ptid (pid));
-  procfs_find_new_threads ();
+  inf = add_inferior (pid);
+  inf->attach_flag = 1;
+
   push_target (&procfs_ops);
+
+  procfs_find_new_threads ();
 }
 
 static void
@@ -572,7 +579,6 @@ do_attach (ptid_t ptid)
   if (devctl (ctl_fd, DCMD_PROC_STATUS, &status, sizeof (status), 0) == EOK
       && status.flags & _DEBUG_FLAG_STOPPED)
     SignalKill (nto_node (), PIDGET (ptid), 0, SIGCONT, 0, 0);
-  attach_flag = 1;
   nto_init_solib_absolute_prefix ();
   return ptid;
 }
@@ -770,6 +776,7 @@ static void
 procfs_detach (char *args, int from_tty)
 {
   int siggnal = 0;
+  int pid;
 
   if (from_tty)
     {
@@ -788,9 +795,11 @@ procfs_detach (char *args, int from_tty)
 
   close (ctl_fd);
   ctl_fd = -1;
-  init_thread_list ();
+
+  pid = ptid_get_pid (inferior_ptid);
   inferior_ptid = null_ptid;
-  attach_flag = 0;
+  detach_inferior (pid);
+  init_thread_list ();
   unpush_target (&procfs_ops);	/* Pop out of handling an inferior.  */
 }
 
@@ -908,7 +917,6 @@ procfs_mourn_inferior (void)
   init_thread_list ();
   unpush_target (&procfs_ops);
   generic_mourn_inferior ();
-  attach_flag = 0;
 }
 
 /* This function breaks up an argument string into an argument
@@ -1077,7 +1085,9 @@ procfs_create_inferior (char *exec_file, char *allargs, char **env,
 
   inferior_ptid = do_attach (pid_to_ptid (pid));
 
+  add_inferior (pid);
   attach_flag = 0;
+
   flags = _DEBUG_FLAG_KLC;	/* Kill-on-Last-Close flag.  */
   errn = devctl (ctl_fd, DCMD_PROC_SET_FLAG, &flags, sizeof (flags), 0);
   if (errn != EOK)
@@ -1092,7 +1102,6 @@ procfs_create_inferior (char *exec_file, char *allargs, char **env,
   if (exec_bfd != NULL
       || (symfile_objfile != NULL && symfile_objfile->obfd != NULL))
     solib_create_inferior_hook ();
-  stop_soon = 0;
 }
 
 static void

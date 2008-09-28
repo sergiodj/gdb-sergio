@@ -230,17 +230,11 @@ extern short *deprecated_value_regnum_hack (struct value *);
 extern struct value *coerce_ref (struct value *value);
 
 /* If ARG is an array, convert it to a pointer.
-   If ARG is an enum, convert it to an integer.
    If ARG is a function, convert it to a function pointer.
 
    References are dereferenced.  */
 
 extern struct value *coerce_array (struct value *value);
-extern struct value *coerce_number (struct value *value);
-
-/* If ARG is an enum, convert it to an integer.  */
-
-extern struct value *coerce_enum (struct value *value);
 
 /* Internal variables (variables for convenience of use of debugger)
    are recorded as a chain of these structures.  */
@@ -331,9 +325,11 @@ extern struct value *value_concat (struct value *arg1, struct value *arg2);
 extern struct value *value_binop (struct value *arg1, struct value *arg2,
 				  enum exp_opcode op);
 
-extern struct value *value_add (struct value *arg1, struct value *arg2);
+extern struct value *value_ptradd (struct value *arg1, struct value *arg2);
 
-extern struct value *value_sub (struct value *arg1, struct value *arg2);
+extern struct value *value_ptrsub (struct value *arg1, struct value *arg2);
+
+extern LONGEST value_ptrdiff (struct value *arg1, struct value *arg2);
 
 extern int value_must_coerce_to_target (struct value *arg1);
 
@@ -405,10 +401,14 @@ extern struct value *value_repeat (struct value *arg1, int count);
 
 extern struct value *value_subscript (struct value *array, struct value *idx);
 
+extern struct value *value_bitstring_subscript (struct type *type,
+						struct value *bitstring,
+						struct value *idx);
+
 extern struct value *register_value_being_returned (struct type *valtype,
 						    struct regcache *retbuf);
 
-extern struct value *value_in (struct value *element, struct value *set);
+extern int value_in (struct value *element, struct value *set);
 
 extern int value_bit_index (struct type *type, const gdb_byte *addr,
 			    int index);
@@ -439,6 +439,14 @@ extern CORE_ADDR parse_and_eval_address (char *exp);
 extern CORE_ADDR parse_and_eval_address_1 (char **expptr);
 
 extern LONGEST parse_and_eval_long (char *exp);
+
+extern void unop_promote (const struct language_defn *language,
+			  struct gdbarch *gdbarch,
+			  struct value **arg1);
+
+extern void binop_promote (const struct language_defn *language,
+			   struct gdbarch *gdbarch,
+			   struct value **arg1, struct value **arg2);
 
 extern struct value *access_value_history (int num);
 
@@ -563,7 +571,8 @@ extern struct value *value_slice (struct value *, int, int);
 extern struct value *value_literal_complex (struct value *, struct value *,
 					    struct type *);
 
-extern struct value *find_function_in_inferior (const char *);
+extern struct value *find_function_in_inferior (const char *,
+						struct objfile **);
 
 extern struct value *value_allocate_space_in_inferior (int);
 

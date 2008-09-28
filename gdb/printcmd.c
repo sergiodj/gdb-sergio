@@ -309,6 +309,24 @@ print_formatted (struct value *val, int format, int size,
 			    format, size, stream);
 }
 
+/* Return builtin floating point type of same length as TYPE.
+   If no such type is found, return TYPE itself.  */
+static struct type *
+float_type_from_length (struct gdbarch *gdbarch, struct type *type)
+{
+  const struct builtin_type *builtin = builtin_type (gdbarch);
+  unsigned int len = TYPE_LENGTH (type);
+
+  if (len == TYPE_LENGTH (builtin->builtin_float))
+    type = builtin->builtin_float;
+  else if (len == TYPE_LENGTH (builtin->builtin_double))
+    type = builtin->builtin_double;
+  else if (len == TYPE_LENGTH (builtin->builtin_long_double))
+    type = builtin->builtin_long_double;
+
+  return type;
+}
+
 /* Print a scalar of data of type TYPE, pointed to in GDB by VALADDR,
    according to letters FORMAT and SIZE on STREAM.
    FORMAT may not be zero.  Formats s and i are not supported at this level.
@@ -425,25 +443,16 @@ print_scalar_formatted (const void *valaddr, struct type *type,
 
     case 'c':
       if (TYPE_UNSIGNED (type))
-	{
-	  struct type *utype;
-
-	  utype = builtin_type (current_gdbarch)->builtin_true_unsigned_char;
-	  value_print (value_from_longest (utype, val_long),
-		       stream, 0, Val_pretty_default);
-	}
+	value_print (value_from_longest (builtin_type_true_unsigned_char,
+					 val_long),
+		     stream, 0, Val_pretty_default);
       else
 	value_print (value_from_longest (builtin_type_true_char, val_long),
 		     stream, 0, Val_pretty_default);
       break;
 
     case 'f':
-      if (len == TYPE_LENGTH (builtin_type_float))
-        type = builtin_type_float;
-      else if (len == TYPE_LENGTH (builtin_type_double))
-        type = builtin_type_double;
-      else if (len == TYPE_LENGTH (builtin_type_long_double))
-        type = builtin_type_long_double;
+      type = float_type_from_length (current_gdbarch, type);
       print_floating (valaddr, type, stream);
       break;
 
@@ -507,14 +516,15 @@ print_scalar_formatted (const void *valaddr, struct type *type,
    The `info lines' command uses this.  */
 
 void
-set_next_address (CORE_ADDR addr)
+set_next_address (struct gdbarch *gdbarch, CORE_ADDR addr)
 {
+  struct type *ptr_type = builtin_type (gdbarch)->builtin_data_ptr;
+
   next_address = addr;
 
   /* Make address available to the user as $_.  */
   set_internalvar (lookup_internalvar ("_"),
-		   value_from_pointer (lookup_pointer_type (builtin_type_void),
-				       addr));
+		   value_from_pointer (ptr_type, addr));
 }
 
 /* Optionally print address ADDR symbolically as <SYMBOL+OFFSET> on STREAM,
@@ -2002,17 +2012,6 @@ printf_command (char *arg, int from_tty)
 	s1 = s;
 	val_args[nargs] = parse_to_comma_and_eval (&s1);
 
-	/* If format string wants a float, unchecked-convert the value to
-	   floating point of the same size */
-
-	if (argclass[nargs] == double_arg)
-	  {
-	    struct type *type = value_type (val_args[nargs]);
-	    if (TYPE_LENGTH (type) == sizeof (float))
-	      deprecated_set_value_type (val_args[nargs], builtin_type_float);
-	    if (TYPE_LENGTH (type) == sizeof (double))
-	      deprecated_set_value_type (val_args[nargs], builtin_type_double);
-	  }
 	nargs++;
 	s = s1;
 	if (*s == ',')
@@ -2056,15 +2055,35 @@ printf_command (char *arg, int from_tty)
 	    break;
 	  case double_arg:
 	    {
-	      double val = value_as_double (val_args[i]);
-	      printf_filtered (current_substring, val);
+	      struct type *type = value_type (val_args[i]);
+	      DOUBLEST val;
+	      int inv;
+
+	      /* If format string wants a float, unchecked-convert the value
+		 to floating point of the same size.  */
+	      type = float_type_from_length (current_gdbarch, type);
+	      val = unpack_double (type, value_contents (val_args[i]), &inv);
+	      if (inv)
+		error (_("Invalid floating value found in program."));
+
+	      printf_filtered (current_substring, (double) val);
 	      break;
 	    }
 	  case long_double_arg:
 #ifdef HAVE_LONG_DOUBLE
 	    {
-	      long double val = value_as_double (val_args[i]);
-	      printf_filtered (current_substring, val);
+	      struct type *type = value_type (val_args[i]);
+	      DOUBLEST val;
+	      int inv;
+
+	      /* If format string wants a float, unchecked-convert the value
+		 to floating point of the same size.  */
+	      type = float_type_from_length (current_gdbarch, type);
+	      val = unpack_double (type, value_contents (val_args[i]), &inv);
+	      if (inv)
+		error (_("Invalid floating value found in program."));
+
+	      printf_filtered (current_substring, (long double) val);
 	      break;
 	    }
 #else

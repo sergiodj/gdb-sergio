@@ -233,9 +233,9 @@ struct comp_unit_head
 {
   unsigned long length;
   short version;
-  unsigned int abbrev_offset;
   unsigned char addr_size;
   unsigned char signed_addr_p;
+  unsigned int abbrev_offset;
 
   /* Size of file offsets; either 4 or 8.  */
   unsigned int offset_size;
@@ -247,22 +247,9 @@ struct comp_unit_head
      .debug_info section, for resolving relative reference dies.  */
   unsigned int offset;
 
-  /* Pointer to this compilation unit header in the .debug_info
-     section.  */
-  gdb_byte *cu_head_ptr;
-
-  /* Pointer to the first die of this compilation unit.  This will be
-     the first byte following the compilation unit header.  */
-  gdb_byte *first_die_ptr;
-
-  /* Pointer to the next compilation unit header in the program.  */
-  struct comp_unit_head *next;
-
-  /* Base address of this compilation unit.  */
-  CORE_ADDR base_address;
-
-  /* Non-zero if base_address has been set.  */
-  int base_known;
+  /* Offset to first die in this cu from the start of the cu.
+     This will be the first byte following the compilation unit header.  */
+  unsigned int first_die_offset;
 };
 
 /* Internal state when decoding a particular compilation unit.  */
@@ -271,11 +258,14 @@ struct dwarf2_cu
   /* The objfile containing this compilation unit.  */
   struct objfile *objfile;
 
-  /* The header of the compilation unit.
-
-     FIXME drow/2003-11-10: Some of the things from the comp_unit_head
-     should logically be moved to the dwarf2_cu structure.  */
+  /* The header of the compilation unit.  */
   struct comp_unit_head header;
+
+  /* Base address of this compilation unit.  */
+  CORE_ADDR base_address;
+
+  /* Non-zero if base_address has been set.  */
+  int base_known;
 
   struct function_range *first_fn, *last_fn, *cached_fn;
 
@@ -523,15 +513,15 @@ struct abbrev_info
 
 struct attr_abbrev
   {
-    enum dwarf_attribute name;
-    enum dwarf_form form;
+    ENUM_BITFIELD(dwarf_attribute) name : 16;
+    ENUM_BITFIELD(dwarf_form) form : 16;
   };
 
 /* Attributes have a name and a value */
 struct attribute
   {
-    enum dwarf_attribute name;
-    enum dwarf_form form;
+    ENUM_BITFIELD(dwarf_attribute) name : 16;
+    ENUM_BITFIELD(dwarf_form) form : 16;
     union
       {
 	char *str;
@@ -546,10 +536,17 @@ struct attribute
 /* This data structure holds a complete die structure. */
 struct die_info
   {
-    enum dwarf_tag tag;		/* Tag indicating type of die */
-    unsigned int abbrev;	/* Abbrev number */
-    unsigned int offset;	/* Offset in .debug_info section */
-    unsigned int num_attrs;	/* Number of attributes */
+    /* DWARF-2 tag for this DIE.  */
+    ENUM_BITFIELD(dwarf_tag) tag : 16;
+
+    /* Number of attributes */
+    unsigned short num_attrs;
+
+    /* Abbrev number */
+    unsigned int abbrev;
+
+    /* Offset in .debug_info section */
+    unsigned int offset;
 
     /* The dies in a compilation unit form an n-ary tree.  PARENT
        points to this die's parent; CHILD points to the first child of
@@ -766,6 +763,10 @@ static void add_partial_namespace (struct partial_die_info *pdi,
 
 static void add_partial_enumeration (struct partial_die_info *enum_pdi,
 				     struct dwarf2_cu *cu);
+
+static void add_partial_subprogram (struct partial_die_info *pdi,
+				    CORE_ADDR *lowpc, CORE_ADDR *highpc,
+				    struct dwarf2_cu *cu);
 
 static gdb_byte *locate_pdi_sibling (struct partial_die_info *orig_pdi,
                                      gdb_byte *info_ptr,
@@ -1493,8 +1494,7 @@ dwarf2_build_psymtabs_hard (struct objfile *objfile, int mainline)
 
       /* Complete the cu_header */
       cu.header.offset = beg_of_comp_unit - dwarf2_per_objfile->info_buffer;
-      cu.header.first_die_ptr = info_ptr;
-      cu.header.cu_head_ptr = beg_of_comp_unit;
+      cu.header.first_die_offset = info_ptr - beg_of_comp_unit;
 
       cu.list_in_scope = &file_symbols;
 
@@ -1660,8 +1660,7 @@ load_comp_unit (struct dwarf2_per_cu_data *this_cu, struct objfile *objfile)
 
   /* Complete the cu_header.  */
   cu->header.offset = beg_of_comp_unit - dwarf2_per_objfile->info_buffer;
-  cu->header.first_die_ptr = info_ptr;
-  cu->header.cu_head_ptr = beg_of_comp_unit;
+  cu->header.first_die_offset = info_ptr - beg_of_comp_unit;
 
   /* Read the abbrevs for this compilation unit into a table.  */
   dwarf2_read_abbrevs (abfd, cu);
@@ -1783,21 +1782,7 @@ scan_partial_symbols (struct partial_die_info *first_die, CORE_ADDR *lowpc,
 	  switch (pdi->tag)
 	    {
 	    case DW_TAG_subprogram:
-	      if (pdi->has_pc_info)
-		{
-		  if (pdi->lowpc < *lowpc)
-		    {
-		      *lowpc = pdi->lowpc;
-		    }
-		  if (pdi->highpc > *highpc)
-		    {
-		      *highpc = pdi->highpc;
-		    }
-		  if (!pdi->is_declaration)
-		    {
-		      add_partial_symbol (pdi, cu);
-		    }
-		}
+	      add_partial_subprogram (pdi, lowpc, highpc, cu);
 	      break;
 	    case DW_TAG_variable:
 	    case DW_TAG_typedef:
@@ -2145,6 +2130,51 @@ add_partial_namespace (struct partial_die_info *pdi,
 
   if (pdi->has_children)
     scan_partial_symbols (pdi->die_child, lowpc, highpc, cu);
+}
+
+/* Read a partial die corresponding to a subprogram and create a partial
+   symbol for that subprogram.  When the CU language allows it, this
+   routine also defines a partial symbol for each nested subprogram
+   that this subprogram contains.
+   
+   DIE my also be a lexical block, in which case we simply search
+   recursively for suprograms defined inside that lexical block.
+   Again, this is only performed when the CU language allows this
+   type of definitions.  */
+
+static void
+add_partial_subprogram (struct partial_die_info *pdi,
+			CORE_ADDR *lowpc, CORE_ADDR *highpc,
+			struct dwarf2_cu *cu)
+{
+  if (pdi->tag == DW_TAG_subprogram)
+    {
+      if (pdi->has_pc_info)
+        {
+          if (pdi->lowpc < *lowpc)
+            *lowpc = pdi->lowpc;
+          if (pdi->highpc > *highpc)
+            *highpc = pdi->highpc;
+          if (!pdi->is_declaration)
+            add_partial_symbol (pdi, cu);
+        }
+    }
+  
+  if (! pdi->has_children)
+    return;
+
+  if (cu->language == language_ada)
+    {
+      pdi = pdi->die_child;
+      while (pdi != NULL)
+	{
+	  fixup_partial_die (pdi, cu);
+	  if (pdi->tag == DW_TAG_subprogram
+	      || pdi->tag == DW_TAG_lexical_block)
+	    add_partial_subprogram (pdi, lowpc, highpc, cu);
+	  pdi = pdi->die_sibling;
+	}
+    }
 }
 
 /* See if we can figure out if the class lives in a namespace.  We do
@@ -2649,22 +2679,22 @@ process_full_comp_unit (struct dwarf2_per_cu_data *per_cu)
      DW_AT_entry_pc.  It's been removed, but GCC still uses this for
      compilation units with discontinuous ranges.  */
 
-  cu->header.base_known = 0;
-  cu->header.base_address = 0;
+  cu->base_known = 0;
+  cu->base_address = 0;
 
   attr = dwarf2_attr (cu->dies, DW_AT_entry_pc, cu);
   if (attr)
     {
-      cu->header.base_address = DW_ADDR (attr);
-      cu->header.base_known = 1;
+      cu->base_address = DW_ADDR (attr);
+      cu->base_known = 1;
     }
   else
     {
       attr = dwarf2_attr (cu->dies, DW_AT_low_pc, cu);
       if (attr)
 	{
-	  cu->header.base_address = DW_ADDR (attr);
-	  cu->header.base_known = 1;
+	  cu->base_address = DW_ADDR (attr);
+	  cu->base_known = 1;
 	}
     }
 
@@ -3132,8 +3162,8 @@ dwarf2_ranges_read (unsigned offset, CORE_ADDR *low_return,
   CORE_ADDR high = 0;
   CORE_ADDR baseaddr;
 
-  found_base = cu_header->base_known;
-  base = cu_header->base_address;
+  found_base = cu->base_known;
+  base = cu->base_address;
 
   if (offset >= dwarf2_per_objfile->ranges_size)
     {
@@ -3400,8 +3430,8 @@ dwarf2_record_block_ranges (struct die_info *die, struct block *block,
          'baseaddr' argument, which GDB uses to relocate debugging
          information from a shared library based on the address at
          which the library was loaded.  */
-      CORE_ADDR base = cu->header.base_address;
-      int base_known = cu->header.base_known;
+      CORE_ADDR base = cu->base_address;
+      int base_known = cu->base_known;
 
       if (offset >= dwarf2_per_objfile->ranges_size)
         {
@@ -5567,6 +5597,7 @@ load_partial_dies (bfd *abfd, gdb_byte *info_ptr, int building_psymtab,
 	  && !is_type_tag_for_partial (abbrev->tag)
 	  && abbrev->tag != DW_TAG_enumerator
 	  && abbrev->tag != DW_TAG_subprogram
+	  && abbrev->tag != DW_TAG_lexical_block
 	  && abbrev->tag != DW_TAG_variable
 	  && abbrev->tag != DW_TAG_namespace
 	  && abbrev->tag != DW_TAG_member)
@@ -5689,9 +5720,14 @@ load_partial_dies (bfd *abfd, gdb_byte *info_ptr, int building_psymtab,
 				sizeof (struct partial_die_info));
 
       /* For some DIEs we want to follow their children (if any).  For C
-         we have no reason to follow the children of structures; for other
+	 we have no reason to follow the children of structures; for other
 	 languages we have to, both so that we can get at method physnames
-	 to infer fully qualified class names, and for DW_AT_specification.  */
+	 to infer fully qualified class names, and for DW_AT_specification.
+
+	 For Ada, we need to scan the children of subprograms and lexical
+	 blocks as well because Ada allows the definition of nested
+	 entities that could be interesting for the debugger, such as
+	 nested subprograms for instance.  */
       if (last_die->has_children
 	  && (load_all
 	      || last_die->tag == DW_TAG_namespace
@@ -5700,7 +5736,10 @@ load_partial_dies (bfd *abfd, gdb_byte *info_ptr, int building_psymtab,
 		  && (last_die->tag == DW_TAG_class_type
 		      || last_die->tag == DW_TAG_interface_type
 		      || last_die->tag == DW_TAG_structure_type
-		      || last_die->tag == DW_TAG_union_type))))
+		      || last_die->tag == DW_TAG_union_type))
+	      || (cu->language == language_ada
+		  && (last_die->tag == DW_TAG_subprogram
+		      || last_die->tag == DW_TAG_lexical_block))))
 	{
 	  nesting_level++;
 	  parent_die = last_die;
@@ -5886,11 +5925,11 @@ read_partial_die (struct partial_die_info *part_die,
 	  || dwarf2_per_objfile->has_section_at_zero))
     part_die->has_pc_info = 1;
 
-  if (base_address_type != base_address_none && !cu->header.base_known)
+  if (base_address_type != base_address_none && !cu->base_known)
     {
       gdb_assert (part_die->tag == DW_TAG_compile_unit);
-      cu->header.base_known = 1;
-      cu->header.base_address = base_address;
+      cu->base_known = 1;
+      cu->base_address = base_address;
     }
 
   return info_ptr;
@@ -5955,7 +5994,9 @@ find_partial_die (unsigned long offset, struct dwarf2_cu *cu)
 	  dwarf2_read_abbrevs (per_cu->cu->objfile->obfd, per_cu->cu);
 	  back_to = make_cleanup (dwarf2_free_abbrev_table, per_cu->cu);
 	}
-      info_ptr = per_cu->cu->header.first_die_ptr;
+      info_ptr = (dwarf2_per_objfile->info_buffer
+		  + per_cu->cu->header.offset
+		  + per_cu->cu->header.first_die_offset);
       abbrev = peek_die_abbrev (info_ptr, &bytes_read, per_cu->cu);
       info_ptr = read_partial_die (&comp_unit_die, abbrev, bytes_read,
 				   per_cu->cu->objfile->obfd, info_ptr,
@@ -9916,8 +9957,8 @@ dwarf2_symbol_mark_computed (struct attribute *attr, struct symbol *sym,
 	 don't run off the edge of the section.  */
       baton->size = dwarf2_per_objfile->loc_size - DW_UNSND (attr);
       baton->data = dwarf2_per_objfile->loc_buffer + DW_UNSND (attr);
-      baton->base_address = cu->header.base_address;
-      if (cu->header.base_known == 0)
+      baton->base_address = cu->base_address;
+      if (cu->base_known == 0)
 	complaint (&symfile_complaints,
 		   _("Location list used without specifying the CU base address."));
 

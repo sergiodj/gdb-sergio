@@ -34,24 +34,21 @@
 
 #include "elf/common.h"
 
-#if 0
-/* Convert DWARF register number REG to the appropriate register
-   number used by GDB.  */
+/* Map DWARF DBX register numbers to GDB register numbers.  */
 static int
-hppa_dwarf_reg_to_regnum (int reg)
+hppa_dwarf_reg_to_regnum (struct gdbarch *gdbarch, int reg)
 {
-  /* registers 0 - 31 are the same in both sets */
-  if (reg < 32)
+  /* The general registers and the sar are the same in both sets.  */
+  if (reg <= 32)
     return reg;
 
-  /* dwarf regs 32 to 85 are fpregs 4 - 31 */
-  if (reg >= 32 && reg <= 85)
-    return HPPA_FP4_REGNUM + (reg - 32);
+  /* fr4-fr31 (left and right halves) are mapped from 72.  */
+  if (reg >= 72 && reg <= 72 + 28 * 2)
+    return HPPA_FP4_REGNUM + (reg - 72);
 
-  warning (_("Unmapped DWARF Register #%d encountered."), reg);
+  warning (_("Unmapped DWARF DBX Register #%d encountered."), reg);
   return -1;
 }
-#endif
 
 static void
 hppa_linux_target_write_pc (struct regcache *regcache, CORE_ADDR v)
@@ -227,7 +224,8 @@ hppa_linux_sigtramp_frame_unwind_cache (struct frame_info *this_frame,
   /* Skip sc_flags.  */
   scptr += 4;
 
-  /* GR[0] is the psw, we don't restore that.  */
+  /* GR[0] is the psw.  */
+  info->saved_regs[HPPA_IPSW_REGNUM].addr = scptr;
   scptr += 4;
 
   /* General registers.  */
@@ -237,7 +235,7 @@ hppa_linux_sigtramp_frame_unwind_cache (struct frame_info *this_frame,
       scptr += 4;
     }
 
-  /* Pad.  */
+  /* Pad to long long boundary.  */
   scptr += 4;
 
   /* FP regs; FP0-3 are not restored.  */
@@ -261,6 +259,8 @@ hppa_linux_sigtramp_frame_unwind_cache (struct frame_info *this_frame,
   scptr += 4;
   info->saved_regs[HPPA_PCOQ_TAIL_REGNUM].addr = scptr;
   scptr += 4;
+
+  info->saved_regs[HPPA_SAR_REGNUM].addr = scptr;
 
   info->base = get_frame_register_unsigned (this_frame, HPPA_SP_REGNUM);
 
@@ -474,12 +474,12 @@ hppa_linux_supply_fpregset (const struct regset *regset,
   int i, offset;
 
   offset = 0;
-  for (i = 0; i < 31; i++)
+  for (i = 0; i < 64; i++)
     {
       if (regnum == HPPA_FP0_REGNUM + i || regnum == -1)
         regcache_raw_supply (regcache, HPPA_FP0_REGNUM + i, 
 			     buf + offset);
-      offset += 8;
+      offset += 4;
     }
 }
 
@@ -545,12 +545,7 @@ hppa_linux_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
   set_gdbarch_regset_from_core_section
     (gdbarch, hppa_linux_regset_from_core_section);
 
-#if 0
-  /* Dwarf-2 unwinding support.  Not yet working.  */
   set_gdbarch_dwarf2_reg_to_regnum (gdbarch, hppa_dwarf_reg_to_regnum);
-  frame_unwind_append_sniffer (gdbarch, dwarf2_frame_sniffer);
-  frame_base_append_sniffer (gdbarch, dwarf2_frame_base_sniffer);
-#endif
 
   /* Enable TLS support.  */
   set_gdbarch_fetch_tls_load_module_address (gdbarch,

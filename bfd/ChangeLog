@@ -1,3 +1,47 @@
+2008-09-19  Alan Modra  <amodra@bigpond.net.au>
+
+	* elf32-ppc.c (ppc_elf_finish_dynamic_sections): Handle vxworks
+	_GLOBAL_OFFSET_TABLE_ in .got.plt section.  Add BFD_ASSERTs.
+
+2008-09-17  Bob Wilson  <bob.wilson@acm.org>
+
+	* elf32-xtensa.c (elf_xtensa_check_relocs): Check for negative refcount.
+
+2008-09-17  Jan Kratochvil  <jan.kratochvil@redhat.com>
+
+	PR 6893 - Do not consider FDEs for discarded sections as invalid.
+	* elf-eh-frame.c (_bfd_elf_parse_eh_frame): New REQUIRE_CLEARED_RELOCS.
+	Consider FDEs with cleared relocations as valid and ignorable.
+
+2008-09-16  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR ld/6877
+	* elflink.c (_bfd_elf_merge_symbol): Allow a common symbol to
+	override the function in a shared library.
+
+2008-09-16  Alan Modra  <amodra@bigpond.net.au>
+
+	PR 6844
+	* elf32-ppc.c (SYM_VAL): Define.  Use throughout to find symbol vma.
+	(ppc_elf_relocate_section): Correct GOT offset calculation.
+	(ppc_elf_finish_dynamic_symbol): Use PPC_HA and PPC_LO.
+	(ppc_elf_finish_dynamic_sections): Likewise.  Error if
+	htab->elf.hgot symbol is not defined in htab->got section.
+
+2008-09-16  Alan Modra  <amodra@bigpond.net.au>
+
+	PR 6888
+	* elf32-ppc.c (ppc_elf_relocate_section): Handle NULL symbol section
+	on R_PPC_TOC16, R_PPC_SDAREL16, R_PPC_EMB_SDA2REL, R_PPC_EMB_SDA21,
+	R_PPC_EMB_RELSDA, R_PPC_SECTOFF* relocs.
+
+2008-09-11  Jan Kratochvil  <jan.kratochvil@redhat.com>
+
+	Fix loading large elf64 binaries on 32bit hosts.
+	* configure.in: Call AC_SYS_LARGEFILE.
+	* config.in: Regenerate.
+	* configure: Regenerate.
+
 2008-09-08  Tom Tromey  <tromey@redhat.com>
 
 	* elfxx-mips.c (mips16_stub_symndx) <sec>: Mark argument as

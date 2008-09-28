@@ -796,12 +796,33 @@ get_frame_register_bytes (struct frame_info *frame, int regnum,
 			  CORE_ADDR offset, int len, gdb_byte *myaddr)
 {
   struct gdbarch *gdbarch = get_frame_arch (frame);
+  int i;
+  int maxsize;
+  int numregs;
 
   /* Skip registers wholly inside of OFFSET.  */
   while (offset >= register_size (gdbarch, regnum))
     {
       offset -= register_size (gdbarch, regnum);
       regnum++;
+    }
+
+  /* Ensure that we will not read beyond the end of the register file.
+     This can only ever happen if the debug information is bad.  */
+  maxsize = -offset;
+  numregs = gdbarch_num_regs (gdbarch) + gdbarch_num_pseudo_regs (gdbarch);
+  for (i = regnum; i < numregs; i++)
+    {
+      int thissize = register_size (gdbarch, i);
+      if (thissize == 0)
+	break;	/* This register is not available on this architecture.  */
+      maxsize += thissize;
+    }
+  if (len > maxsize)
+    {
+      warning (_("Bad debug information detected: "
+		 "Attempt to read %d bytes from registers."), len);
+      return 0;
     }
 
   /* Copy the data.  */

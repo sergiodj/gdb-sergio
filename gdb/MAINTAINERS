@@ -158,6 +158,7 @@ future, if there are, a reference to the list will be included here.
 
 The current global maintainers are (in alphabetical order):
 
+Pedro Alves                     pedro@codesourcery.com
 Jim Blandy			jimb@mozilla.com
 Joel Brobecker			brobecker@adacore.com
 Kevin Buettner			kevinb@redhat.com
@@ -518,7 +519,7 @@ Mark Kettenis					kettenis@gnu.org
 Marc Khouzam					marc.khouzam@ericsson.com
 Jim Kingdon					kingdon@panix.com
 Jan Kratochvil					jan.kratochvil@redhat.com
-Jonathan Larmour				jlarmour@redhat.co.uk
+Jonathan Larmour				jifl@ecoscentric.com
 Jeff Law					law@redhat.com
 David Lecomber					david@streamline-computing.com
 Robert Lipe					rjl@sco.com
@@ -575,7 +576,7 @@ Stephen P. Smith				ischis2@cox.net
 Jackie Smith Cashion				jsmith@redhat.com
 Michael Snyder					msnyder@vmware.com
 Petr Sorfa					petrs@caldera.com
-Andrew Stubbs					andrew.stubbs@st.com
+Andrew Stubbs					ams@codesourcery.com
 Ian Lance Taylor				ian@airs.com
 Gary Thomas					gthomas@redhat.com
 Jason Thorpe					thorpej@netbsd.org

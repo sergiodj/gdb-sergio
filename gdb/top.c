@@ -1185,13 +1185,14 @@ quit_confirm (void)
   if (! ptid_equal (inferior_ptid, null_ptid) && target_has_execution)
     {
       char *s;
+      struct inferior *inf = current_inferior ();
 
       /* This is something of a hack.  But there's no reliable way to
          see if a GUI is running.  The `use_windows' variable doesn't
          cut it.  */
       if (deprecated_init_ui_hook)
 	s = "A debugging session is active.\nDo you still want to close the debugger?";
-      else if (attach_flag)
+      else if (inf->attach_flag)
 	s = "The program is running.  Quit anyway (and detach it)? ";
       else
 	s = "The program is running.  Quit anyway (and kill it)? ";
@@ -1203,26 +1204,57 @@ quit_confirm (void)
   return 1;
 }
 
-/* Helper routine for quit_force that requires error handling.  */
-
 struct qt_args
 {
   char *args;
   int from_tty;
 };
 
+/* Callback for iterate_over_threads.  Finds any thread of inferior
+   given by ARG (really an int*).  */
+
+static int
+any_thread_of (struct thread_info *thread, void *arg)
+{
+  int pid = * (int *)arg;
+
+  if (PIDGET (thread->ptid) == pid)
+    return 1;
+
+  return 0;
+}
+
+/* Callback for iterate_over_inferiors.  Kills or detaches the given
+   inferior, depending on how we originally gained control of it.  */
+
+static int
+kill_or_detach (struct inferior *inf, void *args)
+{
+  struct qt_args *qt = args;
+  struct thread_info *thread;
+
+  thread = iterate_over_threads (any_thread_of, &inf->pid);
+  if (thread)
+    {
+      switch_to_thread (thread->ptid);
+      if (inf->attach_flag)
+	target_detach (qt->args, qt->from_tty);
+      else
+	target_kill ();
+    }
+
+  return 0;
+}
+
+/* Helper routine for quit_force that requires error handling.  */
+
 static int
 quit_target (void *arg)
 {
   struct qt_args *qt = (struct qt_args *)arg;
 
-  if (! ptid_equal (inferior_ptid, null_ptid) && target_has_execution)
-    {
-      if (attach_flag)
-        target_detach (qt->args, qt->from_tty);
-      else
-        target_kill ();
-    }
+  /* Kill or detach all inferiors.  */
+  iterate_over_inferiors (kill_or_detach, qt);
 
   /* Give all pushed targets a chance to do minimal cleanup, and pop
      them all out.  */

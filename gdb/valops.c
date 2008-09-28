@@ -44,6 +44,8 @@
 #include "gdb_assert.h"
 #include "cp-support.h"
 #include "observer.h"
+#include "objfiles.h"
+#include "symtab.h"
 
 extern int overload_debug;
 /* Local functions.  */
@@ -122,10 +124,12 @@ Overload resolution in evaluating C++ functions is %s.\n"),
 		    value);
 }
 
-/* Find the address of function name NAME in the inferior.  */
+/* Find the address of function name NAME in the inferior.  If OBJF_P
+   is non-NULL, *OBJF_P will be set to the OBJFILE where the function
+   is defined.  */
 
 struct value *
-find_function_in_inferior (const char *name)
+find_function_in_inferior (const char *name, struct objfile **objf_p)
 {
   struct symbol *sym;
   sym = lookup_symbol (name, 0, VAR_DOMAIN, 0);
@@ -136,6 +140,10 @@ find_function_in_inferior (const char *name)
 	  error (_("\"%s\" exists in this program but is not a function."),
 		 name);
 	}
+
+      if (objf_p)
+	*objf_p = SYMBOL_SYMTAB (sym)->objfile;
+
       return value_of_variable (sym, NULL);
     }
   else
@@ -144,12 +152,19 @@ find_function_in_inferior (const char *name)
 	lookup_minimal_symbol (name, NULL, NULL);
       if (msymbol != NULL)
 	{
+	  struct objfile *objfile = msymbol_objfile (msymbol);
+	  struct gdbarch *gdbarch = get_objfile_arch (objfile);
+
 	  struct type *type;
 	  CORE_ADDR maddr;
-	  type = lookup_pointer_type (builtin_type_char);
+	  type = lookup_pointer_type (builtin_type (gdbarch)->builtin_char);
 	  type = lookup_function_type (type);
 	  type = lookup_pointer_type (type);
 	  maddr = SYMBOL_VALUE_ADDRESS (msymbol);
+
+	  if (objf_p)
+	    *objf_p = objfile;
+
 	  return value_from_pointer (type, maddr);
 	}
       else
@@ -169,11 +184,12 @@ find_function_in_inferior (const char *name)
 struct value *
 value_allocate_space_in_inferior (int len)
 {
+  struct objfile *objf;
+  struct value *val = find_function_in_inferior ("malloc", &objf);
+  struct gdbarch *gdbarch = get_objfile_arch (objf);
   struct value *blocklen;
-  struct value *val = 
-    find_function_in_inferior (gdbarch_name_of_malloc (current_gdbarch));
 
-  blocklen = value_from_longest (builtin_type_int, (LONGEST) len);
+  blocklen = value_from_longest (builtin_type (gdbarch)->builtin_int, len);
   val = call_function_by_hand (val, 1, &blocklen);
   if (value_logical_not (val))
     {
@@ -473,7 +489,7 @@ value_cast (struct type *type, struct value *arg2)
 	   && value_as_long (arg2) == 0)
     {
       struct value *result = allocate_value (type);
-      cplus_make_method_ptr (value_contents_writeable (result), 0, 0);
+      cplus_make_method_ptr (type, value_contents_writeable (result), 0, 0);
       return result;
     }
   else if (code1 == TYPE_CODE_MEMBERPTR && code2 == TYPE_CODE_INT
@@ -529,11 +545,11 @@ value_one (struct type *type, enum lval_type lv)
 
   if (TYPE_CODE (type1) == TYPE_CODE_DECFLOAT)
     {
-      struct value *int_one = value_from_longest (builtin_type_int, 1);
+      struct value *int_one = value_from_longest (builtin_type_int32, 1);
       struct value *val;
       gdb_byte v[16];
 
-      decimal_from_integral (int_one, v, TYPE_LENGTH (builtin_type_int));
+      decimal_from_integral (int_one, v, TYPE_LENGTH (builtin_type_int32));
       val = value_from_decfloat (type, v);
     }
   else if (TYPE_CODE (type1) == TYPE_CODE_FLT)
@@ -1172,14 +1188,7 @@ value_ind (struct value *arg1)
 
   base_type = check_typedef (value_type (arg1));
 
-  /* Allow * on an integer so we can cast it to whatever we want.
-     This returns an int, which seems like the most C-like thing to
-     do.  "long long" variables are rare enough that
-     BUILTIN_TYPE_LONGEST would seem to be a mistake.  */
-  if (TYPE_CODE (base_type) == TYPE_CODE_INT)
-    return value_at_lazy (builtin_type_int,
-			  (CORE_ADDR) value_as_address (arg1));
-  else if (TYPE_CODE (base_type) == TYPE_CODE_PTR)
+  if (TYPE_CODE (base_type) == TYPE_CODE_PTR)
     {
       struct type *enc_type;
       /* We may be pointing to something embedded in a larger object.
@@ -1254,7 +1263,7 @@ value_array (int lowbound, int highbound, struct value **elemvec)
     }
 
   rangetype = create_range_type ((struct type *) NULL, 
-				 builtin_type_int,
+				 builtin_type_int32,
 				 lowbound, highbound);
   arraytype = create_array_type ((struct type *) NULL,
 				 value_enclosing_type (elemvec[0]), 
@@ -1298,7 +1307,7 @@ value_string (char *ptr, int len)
   struct value *val;
   int lowbound = current_language->string_lower_bound;
   struct type *rangetype = create_range_type ((struct type *) NULL,
-					      builtin_type_int,
+					      builtin_type_int32,
 					      lowbound, 
 					      len + lowbound - 1);
   struct type *stringtype
@@ -1328,7 +1337,7 @@ value_bitstring (char *ptr, int len)
 {
   struct value *val;
   struct type *domain_type = create_range_type (NULL, 
-						builtin_type_int,
+						builtin_type_int32,
 						0, len - 1);
   struct type *type = create_set_type ((struct type *) NULL, 
 				       domain_type);
@@ -2625,7 +2634,8 @@ value_struct_elt_for_reference (struct type *domain, int offset,
 		{
 		  result = allocate_value
 		    (lookup_methodptr_type (TYPE_FN_FIELD_TYPE (f, j)));
-		  cplus_make_method_ptr (value_contents_writeable (result),
+		  cplus_make_method_ptr (value_type (result),
+					 value_contents_writeable (result),
 					 TYPE_FN_FIELD_VOFFSET (f, j), 1);
 		}
 	      else if (noside == EVAL_AVOID_SIDE_EFFECTS)
@@ -2648,7 +2658,8 @@ value_struct_elt_for_reference (struct type *domain, int offset,
 	      else
 		{
 		  result = allocate_value (lookup_methodptr_type (TYPE_FN_FIELD_TYPE (f, j)));
-		  cplus_make_method_ptr (value_contents_writeable (result),
+		  cplus_make_method_ptr (value_type (result),
+					 value_contents_writeable (result),
 					 VALUE_ADDRESS (v), 0);
 		}
 	    }

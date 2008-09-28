@@ -4114,11 +4114,6 @@ not defined, it will default to @code{0xf}.
 @item REMOTE_BPT_VECTOR
 Defaults to @code{1}.
 
-@item const char *gdbarch_name_of_malloc (@var{gdbarch})
-@findex gdbarch_name_of_malloc
-A string containing the name of the function to call in order to
-allocate some memory in the inferior. The default value is "malloc".
-
 @end ftable
 
 @node Adding a New Target
@@ -4417,7 +4412,7 @@ native-dependent object files, by defining @samp{NATDEPFILES=@dots{}}.
 Also specifies the header file which describes native support on
 @var{xyz}, by defining @samp{NAT_FILE= nm-@var{xyz}.h}.  You can also
 define @samp{NAT_CFLAGS}, @samp{NAT_ADD_FILES}, @samp{NAT_CLIBS},
-@samp{NAT_CDEPS}, etc.; see @file{Makefile.in}.
+@samp{NAT_CDEPS}, @samp{NAT_GENERATED_FILES}, etc.; see @file{Makefile.in}.
 
 @emph{Maintainer's note: The @file{.mh} suffix is because this file
 originally contained @file{Makefile} fragments for hosting @value{GDBN}

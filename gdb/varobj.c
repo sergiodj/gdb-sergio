@@ -693,7 +693,7 @@ varobj_set_display_format (struct varobj *var,
   if (varobj_value_is_changeable_p (var) 
       && var->value && !value_lazy (var->value))
     {
-      free (var->print_value);
+      xfree (var->print_value);
       var->print_value = value_get_print_value (var->value, var->format);
     }
 
@@ -2072,7 +2072,7 @@ c_describe_child (struct varobj *parent, int index,
 	{
 	  int real_index = index + TYPE_LOW_BOUND (TYPE_INDEX_TYPE (type));
 	  struct value *indval = 
-	    value_from_longest (builtin_type_int, (LONGEST) real_index);
+	    value_from_longest (builtin_type_int32, (LONGEST) real_index);
 	  gdb_value_subscript (value, indval, cvalue);
 	}
 

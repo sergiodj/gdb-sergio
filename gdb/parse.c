@@ -400,16 +400,10 @@ write_exp_bitstring (struct stoken str)
 }
 
 /* Add the appropriate elements for a minimal symbol to the end of
-   the expression.  The rationale behind passing in text_symbol_type and
-   data_symbol_type was so that Modula-2 could pass in WORD for
-   data_symbol_type.  Perhaps it still is useful to have those types vary
-   based on the language, but they no longer have names like "int", so
-   the initial rationale is gone.  */
+   the expression.  */
 
 void
-write_exp_msymbol (struct minimal_symbol *msymbol, 
-		   struct type *text_symbol_type, 
-		   struct type *data_symbol_type)
+write_exp_msymbol (struct minimal_symbol *msymbol)
 {
   struct objfile *objfile = msymbol_objfile (msymbol);
   struct gdbarch *gdbarch = get_objfile_arch (objfile);
@@ -436,7 +430,7 @@ write_exp_msymbol (struct minimal_symbol *msymbol,
 
   write_exp_elt_opcode (OP_LONG);
   /* Let's make the type big enough to hold a 64-bit address.  */
-  write_exp_elt_type (builtin_type_CORE_ADDR);
+  write_exp_elt_type (builtin_type (gdbarch)->builtin_core_addr);
   write_exp_elt_longcst ((LONGEST) addr);
   write_exp_elt_opcode (OP_LONG);
 
@@ -576,9 +570,7 @@ write_dollar_variable (struct stoken str)
   msym = lookup_minimal_symbol (copy_name (str), NULL, NULL);
   if (msym)
     {
-      write_exp_msymbol (msym,
-			 lookup_function_type (builtin_type_int),
-			 builtin_type_int);
+      write_exp_msymbol (msym);
       return;
     }
 
@@ -775,7 +767,7 @@ operator_length_standard (struct expression *expr, int endpos,
       break;
 
     case OP_COMPLEX:
-      oplen = 1;
+      oplen = 3;
       args = 2;
       break;
 
@@ -1035,6 +1027,7 @@ parse_exp_in_context (char **stringptr, struct block *block, int comma,
   expout = (struct expression *)
     xmalloc (sizeof (struct expression) + EXP_ELEM_TO_BYTES (expout_size));
   expout->language_defn = current_language;
+  expout->gdbarch = current_gdbarch;
 
   TRY_CATCH (except, RETURN_MASK_ALL)
     {
@@ -1269,7 +1262,7 @@ follow_types (struct type *follow_type)
 	   done with it.  */
 	range_type =
 	  create_range_type ((struct type *) NULL,
-			     builtin_type_int, 0,
+			     builtin_type_int32, 0,
 			     array_size >= 0 ? array_size - 1 : 0);
 	follow_type =
 	  create_array_type ((struct type *) NULL,

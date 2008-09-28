@@ -737,12 +737,13 @@ mips_pseudo_register_type (struct gdbarch *gdbarch, int regnum)
 
   /* Use pointer types for registers if we can.  For n32 we can not,
      since we do not have a 64-bit pointer type.  */
-  if (mips_abi_regsize (gdbarch) == TYPE_LENGTH (builtin_type_void_data_ptr))
+  if (mips_abi_regsize (gdbarch)
+      == TYPE_LENGTH (builtin_type (gdbarch)->builtin_data_ptr))
     {
       if (rawnum == MIPS_SP_REGNUM || rawnum == MIPS_EMBED_BADVADDR_REGNUM)
-	return builtin_type_void_data_ptr;
+	return builtin_type (gdbarch)->builtin_data_ptr;
       else if (rawnum == MIPS_EMBED_PC_REGNUM)
-	return builtin_type_void_func_ptr;
+	return builtin_type (gdbarch)->builtin_func_ptr;
     }
 
   if (mips_abi_regsize (gdbarch) == 4 && TYPE_LENGTH (rawtype) == 8
@@ -2492,6 +2493,7 @@ heuristic_proc_start (struct gdbarch *gdbarch, CORE_ADDR pc)
   CORE_ADDR fence;
   int instlen;
   int seen_adjsp = 0;
+  struct inferior *inf;
 
   pc = gdbarch_addr_bits_remove (gdbarch, pc);
   start_pc = pc;
@@ -2504,6 +2506,8 @@ heuristic_proc_start (struct gdbarch *gdbarch, CORE_ADDR pc)
 
   instlen = mips_pc_is_mips16 (pc) ? MIPS_INSN16_SIZE : MIPS_INSN32_SIZE;
 
+  inf = current_inferior ();
+
   /* search back for previous return */
   for (start_pc -= instlen;; start_pc -= instlen)
     if (start_pc < fence)
@@ -2512,7 +2516,7 @@ heuristic_proc_start (struct gdbarch *gdbarch, CORE_ADDR pc)
 	   stop_soon, but with this test, at least we
 	   don't print out warnings for every child forked (eg, on
 	   decstation).  22apr93 rich@cygnus.com.  */
-	if (stop_soon == NO_STOP_QUIETLY)
+	if (inf->stop_soon == NO_STOP_QUIETLY)
 	  {
 	    static int blurb_printed = 0;
 

@@ -89,11 +89,14 @@ inf_ptrace_follow_fork (struct target_ops *ops, int follow_child)
       if (ptrace (PT_DETACH, pid, (PTRACE_TYPE_ARG3)1, 0) == -1)
 	perror_with_name (("ptrace"));
 
+      /* Switch inferior_ptid out of the parent's way.  */
+      inferior_ptid = pid_to_ptid (fpid);
+
       /* Delete the parent.  */
-      delete_thread_silent (last_tp->ptid);
+      detach_inferior (pid);
 
       /* Add the child.  */
-      inferior_ptid = pid_to_ptid (fpid);
+      add_inferior (fpid);
       tp = add_thread_silent (inferior_ptid);
 
       tp->step_resume_breakpoint = step_resume_breakpoint;
@@ -111,6 +114,7 @@ inf_ptrace_follow_fork (struct target_ops *ops, int follow_child)
 
       if (ptrace (PT_DETACH, fpid, (PTRACE_TYPE_ARG3)1, 0) == -1)
 	perror_with_name (("ptrace"));
+      detach_inferior (pid);
     }
 
   return 0;
@@ -208,6 +212,7 @@ inf_ptrace_attach (char *args, int from_tty)
   char *exec_file;
   pid_t pid;
   char *dummy;
+  struct inferior *inf;
 
   if (!args)
     error_no_arg (_("process-id to attach"));
@@ -240,12 +245,14 @@ inf_ptrace_attach (char *args, int from_tty)
   ptrace (PT_ATTACH, pid, (PTRACE_TYPE_ARG3)0, 0);
   if (errno != 0)
     perror_with_name (("ptrace"));
-  attach_flag = 1;
 #else
   error (_("This system does not support attaching to a process"));
 #endif
 
   inferior_ptid = pid_to_ptid (pid);
+
+  inf = add_inferior (pid);
+  inf->attach_flag = 1;
 
   /* Always add a main thread.  If some target extends the ptrace
      target, it should decorate the ptid later with more info.  */
@@ -301,12 +308,12 @@ inf_ptrace_detach (char *args, int from_tty)
   ptrace (PT_DETACH, pid, (PTRACE_TYPE_ARG3)1, sig);
   if (errno != 0)
     perror_with_name (("ptrace"));
-  attach_flag = 0;
 #else
   error (_("This system does not support detaching from a process"));
 #endif
 
   inferior_ptid = null_ptid;
+  detach_inferior (pid);
   unpush_target (ptrace_ops_hack);
 }
 
@@ -610,8 +617,10 @@ inf_ptrace_thread_alive (ptid_t ptid)
 static void
 inf_ptrace_files_info (struct target_ops *ignore)
 {
+  struct inferior *inf = current_inferior ();
+
   printf_filtered (_("\tUsing the running image of %s %s.\n"),
-		   attach_flag ? "attached" : "child",
+		   inf->attach_flag ? "attached" : "child",
 		   target_pid_to_str (inferior_ptid));
 }
 

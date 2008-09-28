@@ -202,9 +202,9 @@ print_this_frame_argument_p (struct symbol *sym)
    of arguments according to the stack frame (or -1 if the number of
    arguments is unknown).  */
 
-/* Note that currently the "number of argumentss according to the
+/* Note that currently the "number of arguments according to the
    stack frame" is only known on VAX where i refers to the "number of
-   ints of argumentss according to the stack frame".  */
+   ints of arguments according to the stack frame".  */
 
 static void
 print_frame_args (struct symbol *func, struct frame_info *frame,
@@ -1780,11 +1780,13 @@ down_command (char *count_exp, int from_tty)
 void
 return_command (char *retval_exp, int from_tty)
 {
+  struct frame_info *thisframe;
   struct symbol *thisfun;
   struct value *return_value = NULL;
   const char *query_prefix = "";
 
-  thisfun = get_frame_function (get_selected_frame ("No selected frame."));
+  thisframe = get_selected_frame ("No selected frame.");
+  thisfun = get_frame_function (thisframe);
 
   /* Compute the return value.  If the computation triggers an error,
      let it bail.  If the return type can't be handled, set
@@ -1803,7 +1805,7 @@ return_command (char *retval_exp, int from_tty)
       if (thisfun != NULL)
 	return_type = TYPE_TARGET_TYPE (SYMBOL_TYPE (thisfun));
       if (return_type == NULL)
-	return_type = builtin_type_int;
+	return_type = builtin_type (get_frame_arch (thisframe))->builtin_int;
       CHECK_TYPEDEF (return_type);
       return_value = value_cast (return_type, return_value);
 

@@ -896,14 +896,6 @@ syms_from_objfile (struct objfile *objfile,
 
   (*objfile->sf->sym_read) (objfile, mainline);
 
-  /* Don't allow char * to have a typename (else would get caddr_t).
-     Ditto void *.  FIXME: Check whether this is now done by all the
-     symbol readers themselves (many of them now do), and if so remove
-     it from here.  */
-
-  TYPE_NAME (lookup_pointer_type (builtin_type_char)) = 0;
-  TYPE_NAME (lookup_pointer_type (builtin_type_void)) = 0;
-
   /* Mark the objfile has having had initial symbol read attempted.  Note
      that this does not mean we found any symbols... */
 
@@ -1065,11 +1057,11 @@ symbol_file_add_with_addrs_or_offsets (bfd *abfd, int from_tty,
       && print_symbol_loading)
     {
       wrap_here ("");
-      printf_filtered (_("(no debugging symbols found)"));
+      printf_unfiltered (_("(no debugging symbols found)"));
       if (from_tty || info_verbose)
-        printf_filtered ("...");
+        printf_unfiltered ("...");
       else
-        printf_filtered ("\n");
+        printf_unfiltered ("\n");
       wrap_here ("");
     }
 
@@ -1235,6 +1227,9 @@ build_id_verify (const char *filename, struct build_id *check)
   if (!bfd_close (abfd))
     warning (_("cannot close \"%s\": %s"), filename,
 	     bfd_errmsg (bfd_get_error ()));
+
+  xfree (found);
+
   return retval;
 }
 
@@ -1363,7 +1358,7 @@ find_separate_debug_file (struct objfile *objfile)
       char *build_id_name;
 
       build_id_name = build_id_to_debug_filename (build_id);
-      free (build_id);
+      xfree (build_id);
       /* Prevent looping on a stripped .debug file.  */
       if (build_id_name != NULL && strcmp (build_id_name, objfile->name) == 0)
         {

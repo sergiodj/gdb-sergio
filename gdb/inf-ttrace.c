@@ -413,6 +413,9 @@ inf_ttrace_follow_fork (struct target_ops *ops, int follow_child)
   lwpid_t lwpid, flwpid;
   ttstate_t tts;
   struct thread_info *last_tp = NULL;
+  struct breakpoint *step_resume_breakpoint = NULL;
+  CORE_ADDR step_range_start = 0, step_range_end = 0;
+  struct frame_id step_frame_id = null_frame_id;
 
   /* FIXME: kettenis/20050720: This stuff should really be passed as
      an argument by our caller.  */
@@ -455,18 +458,17 @@ inf_ttrace_follow_fork (struct target_ops *ops, int follow_child)
   if (follow_child)
     {
       /* Copy user stepping state to the new inferior thread.  */
-      struct breakpoint *step_resume_breakpoint	= last_tp->step_resume_breakpoint;
-      CORE_ADDR step_range_start = last_tp->step_range_start;
-      CORE_ADDR step_range_end = last_tp->step_range_end;
-      struct frame_id step_frame_id = last_tp->step_frame_id;
-
-      struct thread_info *tp;
+      step_resume_breakpoint = last_tp->step_resume_breakpoint;
+      step_range_start = last_tp->step_range_start;
+      step_range_end = last_tp->step_range_end;
+      step_frame_id = last_tp->step_frame_id;
 
       /* Otherwise, deleting the parent would get rid of this
 	 breakpoint.  */
       last_tp->step_resume_breakpoint = NULL;
 
       inferior_ptid = ptid_build (fpid, flwpid, 0);
+      add_inferior (fpid);
       detach_breakpoints (pid);
 
       target_terminal_ours ();
@@ -536,8 +538,9 @@ Detaching after fork from child process %ld.\n"), (long)fpid);
 
       /* Delete parent.  */
       delete_thread_silent (ptid_build (pid, lwpid, 0));
+      detach_inferior (pid);
 
-      /* Add child.  inferior_ptid was already set above.  */
+      /* Add child thread.  inferior_ptid was already set above.  */
       ti = add_thread_silent (inferior_ptid);
       ti->private =
 	xmalloc (sizeof (struct inf_ttrace_private_thread_info));
@@ -707,6 +710,7 @@ inf_ttrace_attach (char *args, int from_tty)
   pid_t pid;
   char *dummy;
   ttevent_t tte;
+  struct inferior *inf;
 
   if (!args)
     error_no_arg (_("process-id to attach"));
@@ -739,7 +743,9 @@ inf_ttrace_attach (char *args, int from_tty)
 
   if (ttrace (TT_PROC_ATTACH, pid, 0, TT_KILL_ON_EXIT, TT_VERSION, 0) == -1)
     perror_with_name (("ttrace"));
-  attach_flag = 1;
+
+  inf = add_inferior (pid);
+  inf->attach_flag = 1;
 
   /* Set the initial event mask.  */
   memset (&tte, 0, sizeof (tte));
@@ -795,8 +801,10 @@ inf_ttrace_detach (char *args, int from_tty)
   inf_ttrace_num_lwps = 0;
   inf_ttrace_num_lwps_in_syscall = 0;
 
-  unpush_target (ttrace_ops_hack);
   inferior_ptid = null_ptid;
+  detach_inferior (pid);
+
+  unpush_target (ttrace_ops_hack);
 }
 
 static void
@@ -894,7 +902,7 @@ inf_ttrace_resume (ptid_t ptid, int step, enum target_signal signal)
   if (resume_all)
     ptid = inferior_ptid;
 
-  info = thread_find_pid (ptid);
+  info = find_thread_pid (ptid);
   inf_ttrace_resume_lwp (info, request, sig);
 
   if (resume_all)
@@ -1084,7 +1092,7 @@ inf_ttrace_wait (ptid_t ptid, struct target_waitstatus *ourstatus)
       lwpid = tts.tts_u.tts_thread.tts_target_lwpid;
       ptid = ptid_build (tts.tts_pid, lwpid, 0);
       if (print_thread_events)
-	printf_unfiltered(_("[%s has been terminated]\n")
+	printf_unfiltered(_("[%s has been terminated]\n"),
 			  target_pid_to_str (ptid));
       ti = find_thread_pid (ptid);
       gdb_assert (ti != NULL);
@@ -1214,8 +1222,9 @@ inf_ttrace_xfer_partial (struct target_ops *ops, enum target_object object,
 static void
 inf_ttrace_files_info (struct target_ops *ignore)
 {
+  struct inferior *inf = current_inferior ();
   printf_filtered (_("\tUsing the running image of %s %s.\n"),
-		   attach_flag ? "attached" : "child",
+		   inf->attach_flag ? "attached" : "child",
 		   target_pid_to_str (inferior_ptid));
 }
 

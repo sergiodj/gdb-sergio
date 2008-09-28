@@ -1,3 +1,58 @@
+2008-09-22  Pedro Alves  <pedro@codesourcery.com>
+
+	* lib/mi-support.exp (mi_expect_interrupt): New.
+	(mi_reverse_list, mi_check_thread_states): New, moved and renamed
+	from gdb.mi/mi-nonstop.exp.
+	* gdb.mi/mi-nsintrall.exp, gdb.mi/nsintrall.c: New.
+	* gdb.mi/mi-nonstop.exp (myreverse, check_thread_states): Moved to
+	lib/mi-support.exp.
+	Use mi_check_thread_states throughout.  Avoid ".*" and do not
+	require an anchor after -exec-run.
+
+2008-09-13  Daniel Jacobowitz  <dan@codesourcery.com>
+
+	* gdb.mi/mi-nonstop.exp: Do not check thread state while a
+	stop is pending.  Avoid ".*" when two stops are pending.
+	* lib/gdb.exp (fullname_syntax_POSIX, fullname_syntax_UNC)
+	(fullname_syntax_DOS_CASE, fullname_syntax_DOS): Do not match
+	newlines in fullnames.
+	* lib/mi-support.exp (mi_run_cmd): Do not require an anchor.
+	(mi_expect_stop): Update comments.  Only anchor in sync mode.
+	Do not match newlines.
+	(mi_send_resuming_command_raw): Always return status.
+	(mi_get_stop_line): Do not match more than one line by accident.
+	Only anchor in sync mode.
+	(mi_run_inline_test): If -exec-next fails, give up.
+
+2008-09-11  Ulrich Weigand  <Ulrich.Weigand@de.ibm.com>
+
+	* gdb.base/stack-checking.c (big_frame): Reduce stack consumption
+	on SPU.
+
+2008-09-10  Joel Brobecker  <brobecker@adacore.com>
+
+	* gdb.ada/Makefile.in (EXECUTABLES): Bring up to date.
+
+2008-09-10  Joel Brobecker  <brobecker@adacore.com>
+
+	* gdb.ada/array_bounds.exp, gdb.ada/array_subscript_addr.exp,
+	gdb.ada/arrayidx.exp, gdb.ada/arrayparam.exp, gdb.ada/arrayptr.exp,
+	gdb.ada/assign_1.exp, gdb.ada/boolean_expr.exp,
+	gdb.ada/char_param.exp, gdb.ada/exprs.exp, gdb.ada/fixed_cmp.exp,
+	gdb.ada/fixed_points.exp, gdb.ada/fun_addr.exp,
+	gdb.ada/funcall_param.exp, gdb.ada/homonym.exp,
+	gdb.ada/interface.exp, gdb.ada/null_array.exp,
+	gdb.ada/packed_array.exp, gdb.ada/packed_tagged.exp,
+	gdb.ada/print_chars.exp, gdb.ada/print_pc.exp,
+	gdb.ada/str_ref_cmp.exp, gdb.ada/sym_print_name.exp,
+	gdb.ada/taft_type.exp, gdb.ada/tagged.exp, gdb.ada/type_coercion.exp:
+	Include the "= " sequence in the expected output of print tests.
+
+2008-09-10  Joel Brobecker  <brobecker@adacore.com>
+
+	* gdb.ada/packed_tagged.exp: Accept "boolean" as a valid type
+	description for boolean types.
+
 2008-09-09  Pedro Alves  <pedro@codesourcery.com>
 
 	* gdb.base/hook-stop-continue.c: New.

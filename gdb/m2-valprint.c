@@ -119,7 +119,7 @@ m2_print_long_set (struct type *type, const gdb_byte *valaddr,
 
   target = TYPE_TARGET_TYPE (range);
   if (target == NULL)
-    target = builtin_type_int;
+    target = builtin_type_int32;
 
   if (get_discrete_bounds (range, &field_low, &field_high) >= 0)
     {
@@ -165,7 +165,7 @@ m2_print_long_set (struct type *type, const gdb_byte *valaddr,
 		break;
 	      target = TYPE_TARGET_TYPE (range);
 	      if (target == NULL)
-		target = builtin_type_int;
+		target = builtin_type_int32;
 	    }
 	}
       if (element_seen)
@@ -258,10 +258,7 @@ print_variable_at_address (struct type *type,
   if (TYPE_CODE (elttype) != TYPE_CODE_UNDEF)
     {
       struct value *deref_val =
-	value_at
-	(TYPE_TARGET_TYPE (type),
-	 unpack_pointer (lookup_pointer_type (builtin_type_void),
-			 valaddr));
+	value_at (TYPE_TARGET_TYPE (type), unpack_pointer (type, valaddr));
       common_val_print (deref_val, stream, format, deref_ref,
 			recurse, pretty, current_language);
     }
@@ -420,8 +417,7 @@ m2_val_print (struct type *type, const gdb_byte *valaddr, int embedded_offset,
 	      struct value *deref_val =
 		value_at
 		(TYPE_TARGET_TYPE (type),
-		 unpack_pointer (lookup_pointer_type (builtin_type_void),
-				 valaddr + embedded_offset));
+		 unpack_pointer (type, valaddr + embedded_offset));
 	      common_val_print (deref_val, stream, format, deref_ref,
 				recurse, pretty, current_language);
 	    }

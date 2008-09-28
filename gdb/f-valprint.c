@@ -99,10 +99,11 @@ f77_get_dynamic_lowerbound (struct type *type, int *lower_bound)
       current_frame_addr = get_frame_base (frame);
       if (current_frame_addr > 0)
 	{
+	  struct gdbarch *arch = get_frame_arch (frame);
 	  ptr_to_lower_bound =
 	    read_memory_typed_address (current_frame_addr +
 				       TYPE_ARRAY_LOWER_BOUND_VALUE (type),
-				       builtin_type_void_data_ptr);
+				       builtin_type (arch)->builtin_data_ptr);
 	  *lower_bound = read_memory_integer (ptr_to_lower_bound, 4);
 	}
       else
@@ -165,10 +166,11 @@ f77_get_dynamic_upperbound (struct type *type, int *upper_bound)
       current_frame_addr = get_frame_base (frame);
       if (current_frame_addr > 0)
 	{
+	  struct gdbarch *arch = get_frame_arch (frame);
 	  ptr_to_upper_bound =
 	    read_memory_typed_address (current_frame_addr +
 				       TYPE_ARRAY_UPPER_BOUND_VALUE (type),
-				       builtin_type_void_data_ptr);
+				       builtin_type (arch)->builtin_data_ptr);
 	  *upper_bound = read_memory_integer (ptr_to_upper_bound, 4);
 	}
       else
@@ -444,8 +446,7 @@ f_val_print (struct type *type, const gdb_byte *valaddr, int embedded_offset,
 	      struct value *deref_val =
 	      value_at
 	      (TYPE_TARGET_TYPE (type),
-	       unpack_pointer (lookup_pointer_type (builtin_type_void),
-			       valaddr + embedded_offset));
+	       unpack_pointer (type, valaddr + embedded_offset));
 	      common_val_print (deref_val, stream, format, deref_ref, recurse,
 				pretty, current_language);
 	    }
@@ -522,26 +523,7 @@ f_val_print (struct type *type, const gdb_byte *valaddr, int embedded_offset,
 	print_scalar_formatted (valaddr, type, format, 0, stream);
       else
 	{
-	  val = 0;
-	  switch (TYPE_LENGTH (type))
-	    {
-	    case 1:
-	      val = unpack_long (builtin_type_f_logical_s1, valaddr);
-	      break;
-
-	    case 2:
-	      val = unpack_long (builtin_type_f_logical_s2, valaddr);
-	      break;
-
-	    case 4:
-	      val = unpack_long (builtin_type_f_logical, valaddr);
-	      break;
-
-	    default:
-	      error (_("Logicals of length %d bytes not supported"),
-		     TYPE_LENGTH (type));
-
-	    }
+	  val = extract_unsigned_integer (valaddr, TYPE_LENGTH (type));
 
 	  if (val == 0)
 	    fprintf_filtered (stream, ".FALSE.");
@@ -561,20 +543,7 @@ f_val_print (struct type *type, const gdb_byte *valaddr, int embedded_offset,
       break;
 
     case TYPE_CODE_COMPLEX:
-      switch (TYPE_LENGTH (type))
-	{
-	case 8:
-	  type = builtin_type_f_real;
-	  break;
-	case 16:
-	  type = builtin_type_f_real_s8;
-	  break;
-	case 32:
-	  type = builtin_type_f_real_s16;
-	  break;
-	default:
-	  error (_("Cannot print out complex*%d variables"), TYPE_LENGTH (type));
-	}
+      type = TYPE_TARGET_TYPE (type);
       fputs_filtered ("(", stream);
       print_floating (valaddr, type, stream);
       fputs_filtered (",", stream);

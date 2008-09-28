@@ -32,6 +32,9 @@ extern struct expression *expout;
 extern int expout_size;
 extern int expout_ptr;
 
+#define parse_gdbarch (expout->gdbarch)
+#define parse_language (expout->language_defn)
+
 /* If this is nonzero, this block is used as the lexical context
    for symbol names.  */
 
@@ -133,8 +136,7 @@ extern void write_exp_elt_block (struct block *);
 
 extern void write_exp_elt_objfile (struct objfile *objfile);
 
-extern void write_exp_msymbol (struct minimal_symbol *,
-			       struct type *, struct type *);
+extern void write_exp_msymbol (struct minimal_symbol *);
 
 extern void write_dollar_variable (struct stoken str);
 

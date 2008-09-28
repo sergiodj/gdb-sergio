@@ -95,9 +95,9 @@ static struct type *
 alpha_register_type (struct gdbarch *gdbarch, int regno)
 {
   if (regno == ALPHA_SP_REGNUM || regno == ALPHA_GP_REGNUM)
-    return builtin_type_void_data_ptr;
+    return builtin_type (gdbarch)->builtin_data_ptr;
   if (regno == ALPHA_PC_REGNUM)
-    return builtin_type_void_func_ptr;
+    return builtin_type (gdbarch)->builtin_func_ptr;
 
   /* Don't need to worry about little vs big endian until 
      some jerk tries to port to alpha-unicosmk.  */
@@ -909,6 +909,7 @@ alpha_heuristic_proc_start (struct gdbarch *gdbarch, CORE_ADDR pc)
   CORE_ADDR fence = pc - heuristic_fence_post;
   CORE_ADDR orig_pc = pc;
   CORE_ADDR func;
+  struct inferior *inf;
 
   if (pc == 0)
     return 0;
@@ -946,10 +947,12 @@ alpha_heuristic_proc_start (struct gdbarch *gdbarch, CORE_ADDR pc)
 	}
     }
 
+  inf = current_inferior ();
+
   /* It's not clear to me why we reach this point when stopping quietly,
      but with this test, at least we don't print out warnings for every
      child forked (eg, on decstation).  22apr93 rich@cygnus.com.  */
-  if (stop_soon == NO_STOP_QUIETLY)
+  if (inf->stop_soon == NO_STOP_QUIETLY)
     {
       static int blurb_printed = 0;
 

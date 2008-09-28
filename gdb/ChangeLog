@@ -1,3 +1,977 @@
+2008-09-26  Joel Brobecker  <brobecker@adacore.com>
+
+	* MAINTAINERS (GLOBAL MAINTAINERS): Add Pedro Alves.
+
+2008-09-25  Stephan Springl  <springl-gdb@bfw-online.de> (tiny change)
+
+	* stack.c (print_frame_args): Fix typos in comments.
+
+2008-09-25  Sérgio Durigan Júnior  <sergiodj@linux.vnet.ibm.com>
+
+	* linux-nat.c (get_pending_status): Fix argument to WIFSTOPPED.
+
+2008-09-24  Vladimir Prus  <vladimir@codesourcery.com>
+
+	* remote-sim.c (gdbsim_create_inferior): Fix missing parenthesis.
+	
+2008-09-24  Andreas Schwab  <schwab@suse.de>
+
+	* frame.c (get_frame_register_bytes): Take pseudo registers into
+	account.  Avoid excessive function calls.
+
+2008-09-23  Doug Evans  <dje@google.com>
+
+	* dcache.c (state_chars): New static global.
+	(ENTRY_INVALID,ENTRY_VALID): Renamed from ENTRY_BAD,ENTRY_OK.
+	All uses updated.
+	(dcache_info): Print cache state as mnemonically useful letters instead
+	of magic numbers.
+
+	* dwarf2read.c (comp_unit_head): Reorganize for better packing.
+
+2008-09-22  Tom Tromey  <tromey@redhat.com>
+
+	* symfile.c (symbol_file_add_with_addrs_or_offsets): Don't use
+	printf_filtered.
+
+2008-09-22  Pedro Alves  <pedro@codesourcery.com>
+
+	* infrun.c (follow_exec): Don't do a generic mourn.  Instead
+	inline the required bits.
+	* breakpoint.h (enum inf_context): Add inf_execd.
+
+2008-09-22  Pedro Alves  <pedro@codesourcery.com>
+
+	* infrun.c (handle_inferior_event): In the follow exec case,
+	context-switch before doing anything else.
+
+2008-09-22  Pedro Alves  <pedro@codesourcery.com>
+
+	* top.c (any_thread_of, kill_or_detach): New functions.
+	(quit_target): Iterate over all inferiors, killing or detaching
+	accordingly.
+
+2008-09-22  Pedro Alves  <pedro@codesourcery.com>
+
+	Remove the attach_flag global, and make it per-inferior.
+
+	* inferior.h (attach_flag): Delete.
+	(inferior_process): Declare.
+	* solib.c (update_solib_list): Adjust.
+	* gnu-nat.c (gnu_create_inferior, gnu_attach): Adjust.
+	* inf-ptrace.c (inf_ptrace_detach): Adjust.
+	(inf_ptrace_files_info): Get it from the current inferior.
+	* inf-ttrace.c (inf_ttrace_attach): Adjust.
+	(inf_ttrace_files_info): Get it from the current
+	inferior.
+	* inflow.c (terminal_inferior, terminal_ours_1, set_sigint_trap)
+	(clear_sigint_trap): Get it from the current process.
+	* remote.c (extended_remote_attach_1)
+	(extended_remote_create_inferior_1): Adjust.
+	* top.c (quit_confirm, quit_target): Get it from the current inferior.
+	* procfs.c (do_detach): Adjust.
+	(procfs_wait): Get it from the event inferior.
+	(procfs_files_info): Get it from the current inferior.
+	* nto-procfs.c (procfs_files_info): Likewise.
+	(procfs_attach): Adjust.  Set the attach_flag here.
+	(do_attach): Don't set it here.
+	(procfs_detach): Don't clear it.
+	(procfs_mourn_inferior): Don't clear it.
+	* solib-osf.c (osf_solib_create_inferior_hook): Adjust.
+	* target.c (attach_flag): Delete.
+	(generic_mourn_inferior): Don't clear it.
+	* win32-nat.c (get_win32_debug_event): Get it from the event
+	process.
+	(do_initial_win32_stuff): Add attaching argument.  Set attach_flag
+	in the inferior accordingly.
+	(win32_attach): Don't set the attach_flag here.  Pass 1 to
+	do_intial_win32_stuff.
+	(win32_files_info): Get it from the current inferior.
+	(win32_create_inferior): Dont clear attach_flag here.  Pass 0 to
+	do_intial_win32_stuff.
+
+2008-09-22  Pedro Alves  <pedro@codesourcery.com>
+
+	Make the stop_soon global be per-inferior instead.
+
+	* infcmd.c (attach_command_post_wait): Adjust.
+	(attach_command): Likewise.
+
+	* inferior.h (stop_soon): Delete.
+	(struct inferior): Add stop_soon member.
+
+	* infrun.c (stop_soon): Delete.
+	(clear_proceed_status, start_remote)
+	(fetch_inferior_event, handle_inferior_event): Adjust.
+	(signal_stop_state): Don't check stop_soon here.  Check in callers
+	instead.
+	(save_inferior_status, restore_inferior_status): Adjust.
+
+	* linux-nat.c (linux_nat_resume, linux_nat_wait): Always pass
+	signals to common code if starting up the inferior.
+	
+	* inferior.h (struct inferior_info): Added stop_soon member.
+	* inferior.c (add_inferior) Clear stop_soon.
+
+	* mips-tdep.c (heuristic_proc_start): Adjust.
+	* nto-procfs.c (procfs_create_inferior): Adjust.
+	* solib-irix.c (irix_solib_create_inferior_hook): Adjust.
+	* solib-osf.c (osf_solib_create_inferior_hook): Adjust.
+	* solib-sunos.c (sunos_solib_create_inferior_hook): Adjust.
+	* solib-svr4.c (svr4_solib_create_inferior_hook): Adjust.
+
+	* win32-nat.c (do_initial_win32_stuff): Adjust.
+
+	* alpha-tdep.c (alpha_heuristic_proc_start): Adjust.
+
+2008-09-22  Pedro Alves  <pedro@codesourcery.com>
+
+	Implement remote multi-process extensions.
+
+	* remote.c (struct remote_state): Add extended and
+	multi_process_aware fields.
+	(remote_multi_process_p): New.
+	(PACKET_vKill): New.
+	(record_currthread): Use thread_change_ptid.  Notice new
+	inferiors.
+	(set_thread, remote_thread_alive): Use write_ptid.
+	(write_ptid, read_ptid): New.
+	(remote_current_thread, remote_threads_extra_info): Use them.
+	(remote_threads_info): Likewise.  Detect new inferiors.
+	(remote_start_remote): Add inferior to inferior list.
+	(remote_multi_process_feature): New.
+	(remote_protocol_features): Add "multiprocess" feature.
+	(remote_query_supported): Pass "multiprocess+" as supported
+	features.
+	(remote_open_1): Clear multi_process_aware.  Set extended
+	accordingly.
+	(remote_detach_1): Detach current process.  Use extended packet
+	format for extended-remote multi-process.  Detach process from the
+	inferior list.  Only mourn after printing output.
+	(extended_remote_attach_1): Add process to the inferior list.
+	(remote_vcont_resume): Use write_ptid to pass the thread ids.
+	(remote_wait): Use read_ptid.  Implement the extended
+	multi-process extension format of the 'W' and 'X' reply packets.
+	Remove exited inferiors from inferior list.
+	(remote_xfer_memory): Set general thread.
+	(remote_vkill): New.
+	(extended_remote_kill): New.
+	(remote_mourn_1): Discard all inferiors.
+	(select_new_thread_callback): New.
+	(extended_remote_mourn_1): If there are more processes to debug,
+	switch to a thread in another process, and don't pop the target.
+	(extended_remote_create_inferior_1): Add the new process to the
+	inferior list.
+	(remote_stopped_by_watchpoint): Indenting.
+	(remote_xfer_partial): Set the general thread.
+	(remote_pid_to_str): If the remote is multi-process aware, print
+	the process id as well as the thread id.
+	(remote_get_thread_local_address): Use write_ptid.
+	(init_extended_remote_ops): Register extended_remote_kill.
+	(_initialize_remote): Register new packets.  Change
+	magic_null_ptid's, not_sent_ptid's and any_thread_ptid's pid
+	member to 42000.
+
+	* thread.c (thread_change_ptid): Also account for the inferior pid
+	changing.
+
+	* inferior.h (discard_all_inferiors): Declare.
+	* inferior.c (discard_all_inferiors): New.
+
+2008-09-22  Pedro Alves  <pedro@codesourcery.com>
+
+	* gnu-nat.c (gnu_attach): Add process to inferiors table.
+	(gnu_detach): Remove it.
+	* go32-nat.c (go32_create_inferior): Add process to gdb's inferior
+	table.
+	* inf-ptrace.c (inf_ptrace_follow_fork): Delete and add inferiors
+	to inferior table accordingly.
+	(inf_ptrace_attach): Add new process to inferior table.
+	(inf_ptrace_detach): Remove it.
+	* inf-ttrace.c (inf_ttrace_follow_fork): Delete and add inferiors
+	to inferior table accordingly.
+	(inf_ttrace_attach): Add process to inferior table.
+	(inf_ttrace_detach): Remove it.
+	* linux-fork.c (init_fork_list): Delete any left over inferior.
+	(linux_fork_mourn_inferior, detach_fork_command): Also delete
+	processes from inferior list.
+	* monitor.c (monitor_open): Add process to inferior list.
+	(monitor_close): Remove it.
+	* nto-procfs.c (procfs_attach): Add process to inferior list.
+	Find threads after pushing the target.
+	(procfs_detach): Remove process from inferior list.
+	(procfs_create_inferior): Add process to inferior list.
+	* procfs.c (procfs_detach): Remove process from inferior list.
+	(do_attach): Add process to inferior list.
+	* remote-sim.c (sim_create_inferior): Add process to inferior list.
+	(gdbsim_close): Remove it.
+	* target.c (generic_mourn_inferior): If inferior_ptid is not
+	null_ptid, remove the corresponding inferior from inferior list.
+	* win32-nat.c (do_initial_win32_stuff): Add process to inferior list.
+	(win32_detach): Remove it.
+	* linux-nat.c (linux_child_follow_fork): Delete and add inferiors
+	to inferior list accordingly.
+	* fork-child.c (fork_inferior): Add process to inferior list.
+	* corelow.c (CORELOW_PID): Define.
+	(core_close): Remove core from inferior list.
+	(core_open): Add it.
+
+2008-09-22  Pedro Alves  <pedro@codesourcery.com>
+
+	* inferior.h: Forward declare struct ui_out.
+	Forward declare struct private_inferior.
+	(struct inferior): New.
+	(init_inferior_list, add_inferior, add_inferior_silent)
+	(delete_inferior, delete_inferior_silent, detach_inferior)
+	(gdb_inferior_id_to_pid, pid_to_gdb_inferior_id, in_inferior_list)
+	(valid_inferior_id, find_inferior_pid): New functions.
+	(inferior_callback_func): New typedef.
+	(iterate_over_inferiors, print_inferior, have_inferiors)
+	(current_inferior): New functions.
+	* inferior.c: New file.
+
+	* Makefile.in (SFILES): Add inferior.c.
+	(COMMON_OBS): Add inferior.o.
+
+2008-09-22  Jonathan Larmour  <jifl@eCosCentric.com>
+
+	* arm-tdep.c (arm_skip_prologue): Call skip_prologue_using_sal
+	instead of determining symbol and line info directly.
+	* MAINTAINERS: Update my email address.
+
+2008-09-22  Daniel Jacobowitz  <dan@codesourcery.com>
+
+	* symtab.c (skip_prologue_using_sal): Treat two consecutive lines
+	at the same address as a prologue marker.  Do not skip an entire
+	function.
+
+2008-09-22  Andrew Stubbs  <ams@codesourcery.com>
+
+	* frame.c (get_frame_register_bytes): Comment improvments.
+
+2008-09-22  Pedro Alves  <pedro@codesourcery.com>
+
+	* linux-nat.c (linux_nat_wait): Only use set_ignore_sigint in
+	all-stop mode.
+
+2008-09-19  Andrew Stubbs  <ams@codesourcery.com>
+
+	* MAINTAINERS: Update my email address.
+
+2008-09-19  Andrew Stubbs  <ams@codesourcery.com>
+
+	* frame.c (get_frame_register_bytes): Detect bad debug info.
+
+2008-09-17  Jan Kratochvil  <jan.kratochvil@redhat.com>
+
+	Fix a crash on uninitialized ECS->EVENT_THREAD for a newly found thread.
+	* infrun.c (wait_for_inferior): Move this ECS->EVENT_THREAD
+	initialization ...
+	(fetch_inferior_event): ... and this ECS->EVENT_THREAD initialization
+	...
+	(handle_inferior_event): ... here after the add_thread call together
+	with the local adjust_pc_after_break and reinit_frame_cache calls.
+
+2008-09-16  David Daney  <ddaney@avtrex.com>
+
+	* breakpoint.c (bpstat_stop_status): Clear breakpoint_at for
+	all hardware bpstats.
+
+2008-09-16  Joel Brobecker  <brobecker@adacore.com>
+
+	* gstdint.h: Delete.
+
+2008-09-15  Mark Kettenis  <kettenis@gnu.org>
+
+	* infcall.c (generic_push_dummy_code): Remove.
+	(push_dummy_code): Unconditionally call gdbarch_push_dummy_code.
+
+2008-09-15  Doug Evans  <dje@google.com>
+
+	* dwarf2read.c (struct abbrev_info): Make members name, form 16 bits.
+	(struct attribute): Ditto.
+
+2008-09-14  John David Anglin  <dave.anglin@nrc-cnrc.gc.ca>
+
+	* hppa-linux-tdep.c (hppa_linux_sigtramp_frame_unwind_cache): Record
+	HPPA_IPSW_REGNUM and HPPA_SAR_REGNUM values.
+
+	* hppa-linux-tdep.c (hppa_dwarf_reg_to_regnum): Remove surrounding
+	"#if 0" "#endif".  Fix mapping of DWARF DBX registers to GDB registers.
+	Correct arguments and improve comments.
+	(hppa_linux_init_abi): Call set_gdbarch_dwarf2_reg_to_regnum.  Delete
+	disabled code.
+	* hppa-tdep.c (hppa64_dwarf_reg_to_regnum): Fix check for floating
+	point DBX register, change error to warning, and improve comments.
+
+2008-09-14  Doug Evans  <dje@google.com>
+
+	* dwarf2read.c (struct die_info): Make members tag, num_attrs 16 bits.
+
+2008-09-14  John David Anglin  <dave.anglin@nrc-cnrc.gc.ca>
+
+	* hppa-linux-tdep.c (hppa_linux_supply_fpregset): Correct iteration.
+
+2008-09-13  Joel Brobecker  <brobecker@adacore.com>
+
+	* defs.h (GCC_GENERATED_STDINT_H): Define.
+
+2008-09-13  Tom Tromey  <tromey@redhat.com>
+
+	* varobj.c (varobj_set_display_format): Use xfree.
+	* tracepoint.c (stringify_collection_list): Use xfree.
+	* remote-fileio.c (remote_fileio_reset): Use xfree.
+	* mipsread.c (read_alphacoff_dynamic_symtab): Use xfree.
+	* dfp.c (decimal_from_floating): Use xfree, xstrprintf.  Don't use
+	asprintf.
+	* cp-support.c (mangled_name_to_comp): Use xfree.
+
+2008-09-13  Joel Brobecker  <brobecker@adacore.com>
+
+	* ada-lang.c (remove_extra_symbols): Remove stub symbols if
+	the associated complete symbol is also in the list.
+	(ada_add_local_symbols, ada_add_non_local_symbols): New functions,
+	extracted out from ada_lookup_symbol_list.
+	(ada_lookup_symbol_list): Use them.  Remove the search through
+	the minimal symbols.
+
+2008-09-13  Joel Brobecker  <brobecker@adacore.com>
+
+        * dwarf2read.c (add_partial_subprogram): New procedure.
+        (scan_partial_symbols): Use it.
+        (load_partial_dies): Read in children of subprogram and lexical
+        blocks for Ada compilation units.
+
+2008-09-13  Tom Tromey  <tromey@redhat.com>
+
+	* symfile.c (build_id_verify): Free 'found'.
+	(find_separate_debug_file): Use xfree, not free.
+
+2008-09-12  Doug Evans  <dje@google.com>
+
+	* corefile.c (write_memory): Remove unnecessary copying.
+
+	* sol-thread.c (_initialize_sol_thread): Add FIXME regarding
+	order of _initialize_* fns.
+
+	* dwarf2read.c (comp_unit_head): Rename first_die_ptr to
+	first_die_offset.  All uses updated.
+	Delete unused members cu_head_ptr, next.
+	Move members base_known, base_address to ...
+	(dwarf2_cu) ... here.  All uses updated.
+
+2008-09-12  Pedro Alves  <pedro@codesourcery.com>
+
+	* Makefile.in (generated_files): Add $(NAT_GENERATED_FILES).
+	* config/i386/i386gnu.mh (NAT_GENERATED_FILES): New.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* fork-child.c (startup_inferior): Use target_wait and target_resume
+	directly instead of calling wait_for_inferior / resume.
+
+	* infcmd.c (kill_if_already_running): Do not call no_shared_libraries
+	or init_wait_for_inferior.
+	(run_command_1): Call init_wait_for_inferior.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* gdbtypes.h (builtin_type_void_data_ptr, builtin_type_void_func_ptr,
+	builtin_type_CORE_ADDR, builtin_type_char, builtin_type_short,
+	builtin_type_int, builtin_type_long, builtin_type_signed_char,
+	builtin_type_unsigned_char, builtin_type_unsigned_short,
+	builtin_type_unsigned_int, builtin_type_unsigned_long,
+	builtin_type_float, builtin_type_double, builtin_type_long_double,
+	builtin_type_complex, builtin_type_double_complex, builtin_type_string,
+	builtin_type_bool, builtin_type_long_long,
+	builtin_type_unsigned_long_long): Remove macros.
+
+	(builtin_type_f_character, builtin_type_f_integer,
+	builtin_type_f_integer_s2, builtin_type_f_logical,
+	builtin_type_f_logical_s1, builtin_type_f_logical_s2,
+	builtin_type_f_real, builtin_type_f_real_s8, builtin_type_f_real_s16,
+	builtin_type_f_complex_s8, builtin_type_f_complex_s16,
+	builtin_type_f_complex_s32): Likewise.
+
+	(builtin_type_m2_char, builtin_type_m2_int, builtin_type_m2_card,
+	builtin_type_m2_real, builtin_type_m2_bool): Likewise.
+
+	(struct builtin_f_type, builtin_f_type): Move to f-lang.h.
+	(struct builtin_m2_type, builtin_m2_type): Move to m2-lang.h.
+
+	* f-lang.h (struct builtin_f_type, builtin_f_type): Move here.
+	* m2-lang.h (struct builtin_m2_type, builtin_m2_type): Move here.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* solib-svr4.c (LM_ADDR_FROM_LINK_MAP): Use builtin types of
+	target_gdbarch instead of builtin_type_void_data_ptr.
+	(LM_DYNAMIC_FROM_LINK_MAP, LM_NEXT, LM_NAME,
+	IGNORE_FIRST_LINK_MAP_ENTRY, scan_dyntag, elf_locate_base,
+	solib_svr4_r_map, solib_svr4_r_brk, solib_svr4_r_ldsomap,
+	open_symbol_file_object): Likewise.
+	* nto-tdep.c (LM_ADDR): Likewise.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* bsd-uthread.c (bsd_uthread_read_memory_address): New function.
+	(bsd_uthread_fetch_registers, bsd_uthread_store_registers,
+	bsd_uthread_wait, bsd_uthread_find_new_threads): Use it.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* procfs.c (procfs_address_to_host_pointer): Use target_gdbarch
+	and its associated types to perform pointer conversion.
+	(procfs_can_use_hw_breakpoint): Likewise.
+	(procfs_auxv_parse): Remove unused variable.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* auxv.c (default_auxv_parse): Use gdbarch_ptr_bit (target_gdbarch)
+	instead of builtin_type_void_data_ptr.
+	* target.c (default_region_ok_for_hw_watchpoint): Likewise.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* expprint.c (print_subexp_standard): Compare against builtin type
+	associated with exp->gdbarch instead of builtin_type_char.
+
+	* f-valprint.c (f_val_print): Use extract_unsigned_integer to
+	extract values of arbitrary logical type.  Handle arbitrary
+	complex types.
+
+	* printcmd.c (float_type_from_length): New function.
+	(print_scalar_formatted, printf_command): Use it.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* valops.c: Include "objfiles.h" and "symtab.h".
+	(find_function_in_inferior): New argument OBJF_P.  Use it to return
+	objfile where function is defined.  Use per-objfile arch types
+	instead of builtin_type_ to define default return type.
+
+	* linux-fork.c (checkpoint_command): Update calls.  Use per-objfile
+	architecture to define inferior call argument types.
+	* gcore.c (derive_heap_segment): Likewise.
+	* objc-lang.c (value_nsstring): Likewise.
+	* scm-lang.c (scm_lookup_name): Likewise.
+	* scm-valprint.c (scm_inferior_print): Likewise.
+	* valops.c (value_allocate_space_in_inferior): Likewise.
+
+	* eval.c (evaluate_subexp_standard): Update calls.
+	* objc-lang.c (lookup_objc_class, print_object_command): Likewise.
+
+	* linux-fork.c: Include "objfiles.h".
+	* scm-lang.c: Include "objfiles.h".
+	* scm-valprint.c: Include "objfiles.h".
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* gdbarch.sh (name_of_malloc): Remove.
+	* gdbarch.c, gdbarch.h: Re-generate.
+	* valops.c (value_allocate_space_in_inferior): Do not call
+	gdbarch_name_of_malloc.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* valarith.c (value_x_unop): Use builtin_type_int8 as type for
+	UNOP_POSTINCREMENT/UNOP_POSTDECREMENT constant 0 argument.
+	(value_bit_index): Use extract_unsigned_integer
+	instead of unpack_long to read single byte.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* infcall.c (value_arg_coerce): Add GDBARCH parameter.  Use its
+	associates types instead of builtin_type_ macros.
+	(find_function_addr): Leave output VALUE_TYPE NULL if unknown.
+	(call_function_by_hand): Use per-architecture "int" type as
+	fall-back if find_function_addr returns NULL VALUE_TYPE.
+	Update call to value_arg_coerce.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* cp-abi.h (cplus_method_ptr_size): Add TO_TYPE parameter.
+	(cplus_make_method_ptr): Add TYPE parameter.
+	* cp-abi.c (cplus_method_ptr_size): Add TO_TYPE parameter.  Pass it
+	on to current_cp_abi.method_ptr_size callback.
+	(cplus_make_method_ptr): Add TYPE parameter.  Pass it on to
+	current_cp_abi.make_method_ptr callback.
+
+	* gdbtypes.c (lookup_methodptr_type): Pass target type
+	argument to cplus_method_ptr_size.
+	* valops.c (value_cast): Pass type argument to cplus_make_method_ptr.
+	(value_struct_elt_for_reference): Likewise.
+
+	* gnu-v3-abi.c (get_class_arch): New function.
+	(vtable_address_point_offset): Add GDBARCH parameter.  Use it
+	instead of current_gdbarch.  Update all callers.
+	(gnuv3_get_vtable): Likewise.
+	(gnuv3_get_virtual_fn): Likewise.
+	(gnuv3_decode_method_ptr): Likewise.
+	(gnuv3_rtti_type): Call get_class_arch to determine architecture.
+	Use it instead of current_gdbarch.
+	(gnuv3_virtual_fn_field): Likewise.
+	(gnuv3_baseclass_offset): Likewise.
+	(gnuv3_print_method_ptr): Likewise.
+	(gnuv3_method_ptr_to_value): Likewise.
+	(gnuv3_method_ptr_size): Add TYPE parameter.  Use it to determine
+	class architecture.  Use architecture types instead of builtin types.
+	(gnuv3_make_method_ptr): Likewise.
+
+	* cp-valprint.c (cp_print_class_member): Expect pointer type
+	instead of class type.  Use its length when extracting value.
+	* c-valprint.c (c_val_print): Update call to cp_print_class_member.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* stack.c (return_command): Use frame architecture to determine
+	default integer return type.
+
+	* f-valprint.c (f77_get_dynamic_lowerbound): Use frame architecture
+	to determine pointer types.
+	(f77_get_dynamic_upperbound): Likewise.
+
+	* objc-lang.c (OBJC_FETCH_POINTER_ARGUMENT): Remove.
+	(resolve_msgsend): Use architecture of current frame to determine
+	pointer types.  Inline OBJC_FETCH_POINTER_ARGUMENT.
+	(resolve_msgsend_stret, resolve_msgsend_super,
+	resolve_msgsend_super_stret): Likewise.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* alpha-tdep.c (alpha_register_type): Use builtin_type (gdbarch)
+	instead of builtin_type_ macros.
+	* amd64-tdep.c (amd64_register_type): Likewise.
+	(amd64_get_longjmp_target): Likewise.
+	* arm-tdep.c (arm_register_type): Likewise.
+	* avr-tdep.c (avr_register_type): Likewise.
+	* cris-tdep.c (cris_register_type, crisv32_register_type): Likewise.
+	* frv-tdep.c (frv_register_type): Likewise.
+	* h8300-tdep.c (h8300_register_type): Likewise.
+	* hppa-tdep.c (hppa32_convert_from_func_ptr_addr, 
+	hppa_skip_trampoline_code): Likewise.
+	* i386-tdep.c (i386_register_type): Likewise.
+	(i386_unwind_pc, i386_sse_type): Likewise.
+	* ia64-tdep.c (ia64_register_type): Likewise.
+	* m32r-tdep.c (m32r_register_type): Likewise.
+	* m68k-tdep.c (m68k_register_type, m68k_unwind_pc): Likewise.
+	* m88k-tdep.c (m88k_register_type): Likewise.
+	* mep-tdep.c (mep_register_type): Likewise.
+	* mips-tdep.c (mips_pseudo_register_type): Likewise.
+	* mn10300-tdep.c (mn10300_register_type): Likewise.
+	* mt-tdep.c (mt_copro_register_type): Likewise.
+	* rs6000-tdep.c (rs6000_builtin_type_vec64): Likewise.
+	(rs6000_convert_register_p, rs6000_register_to_value,
+	rs6000_value_to_register): Likewise.
+	* s390-tdep.c (s390_register_type): Likewise.
+	* sh64-tdep.c (sh64_register_type): Likewise.
+	(sh64_build_float_register_type, sh64_do_fp_register): Likewise.
+	* sh-tdep.c (sh_sh2a_register_type, sh_sh3e_register_type,
+	sh_sh4_build_float_register_type, sh_sh4_register_type,
+	sh_default_register_type): Likewise.
+	* sparc64-tdep.c (sparc64_register_type): Likewise.
+	* sparc-tdep.c (sparc32_register_type): Likewise.
+	* spu-tdep.c (spu_builtin_type_vec128, spu_register_type): Likewise.
+	* v850-tdep.c (v850_register_type): Likewise.
+	* vax-tdep.c (vax_register_type): Likewise.
+	* xtensa-tdep.c (xtensa_register_type, xtensa_unwind_pc,
+	xtensa_push_dummy_call): Likewise.
+
+	* std-regs.c (value_of_builtin_frame_fp_reg,
+	value_of_builtin_frame_pc_reg): Likewise.
+	* target-descriptions.c (tdesc_register_type): Likewise.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* ada-lang.c (ada_coerce_to_simple_array_type): Use builtin_type_int32
+	instead of builtin_type_int as default unspecified integral type.
+	(ada_index_type, ada_array_bound_from_type, ada_variant_discrim_type,
+	assign_component, to_fixed_range_type): Likewise.
+	* ada-typeprint.c (print_range, print_range_bound,
+	print_range_type_named): Likewise.
+	* ada-valprint.c (print_optional_low_bound, ada_val_print_1): Likewise.
+	* eval.c (evaluate_subexp_standard): Likewise.
+	* gnu-v2-abi.c (gnuv2_virtual_fn_field): Likewise.
+	* gnu-v3-abi.c (gnuv3_get_virtual_fn, gnuv3_baseclass_offset,
+	build_gdb_vtable_type): Likewise.
+	* jv-lang.c (java_array_type): Likewise.
+	* m2-typeprint.c (m2_print_bounds, m2_is_long_set_of_type): Likewise.
+	* m2-valprint.c (m2_print_long_set): Likewise.
+	* parse.c (follow_types): Likewise.
+	* p-typeprint.c (pascal_type_print_base): Likewise.
+	* valops.c (value_one, value_array, value_string,
+	value_bitstring): Likewise.
+	* value.c (allocate_repeat_value, value_from_string): Likewise.
+	* varobj.c (c_describe_child): Likewise.
+	* mt-tdep.c (mt_register_type): Likewise.
+	* sh-tdep.c (sh_sh4_build_float_register_type): Likewise.
+	* sh64-tdep.c (sh64_build_float_register_type): Likewise.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* defs.h (struct gdbarch): Add forward declaration.
+	(set_next_address): Add GDBARCH argument.
+	* printcmd.c (set_next_address): Use it to find pointer type.
+	* breakpoint.c (breakpoint_1): Update call.
+	* source.c (line_info): Likewise.
+	* findcmd.c (find_command): Use current_gdbarch to find pointer type.
+
+	* breakpoint.c (set_breakpoint_count): Use platform-neutral
+	types for internal variable values.
+	* infrun.c (handle_inferior_event): Likewise.
+	* source.c (forward_search_command, reverse_search_command): Likewise.
+	* tracepoint.c (set_tracepoint_count, set_traceframe_num,
+	set_tracepoint_num, set_traceframe_context): Likewise.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* gdbtypes.h (struct builtin_type): Remove builtin_true_char
+	and builtin_true_unsigned_char.
+	(builtin_type_true_char): Remove macro, add extern declaration.
+	(builtin_type_true_unsigned_char): Add extern declaration.
+	* gdbtypes.c (builtin_type_true_char): New global variable.
+	(builtin_type_true_unsigned_char): Likewise.
+	(_initialize_gdbtypes): Initialize them.
+	(gdbtypes_post_init): Do not initialize builtin_true_char
+	and builtin_true_unsigned_char members of struct builtin_type.
+
+	* printcmd.c (print_scalar_formatted): Do not use builtin_type;
+	use builtin_type_true_unsigned_char instead.
+
+	* ada-valprint.c (ada_val_print_1): Use builtin_type_true_char
+	instead of builtin_type_char for internal string.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* gdbtypes.h (builtin_type_void): Remove macro, add declaration.
+	(builtin_type_f_void): Remove macro.
+	* gdbtypes.c (builtin_type_void): New global variable.
+	(_initialize_gdbtypes): Initialize it.
+
+	* gnu-v3-abi.c (build_gdb_vtable_type): Do not call
+	lookup_pointer_type or lookup_function_type on builtin_type_void.
+	* printcmd.c (set_next_address): Likewise.
+	* objc-lang.c (value_nsstring): Likewise.
+	* mt-tdep.c (mt_copro_register_type): Likewise.
+	* xtensa-tdep.c (xtensa_register_type): Likewise.
+
+	* symfile.c (syms_from_objfile): Remove special handling
+	of builtin_type_void and builtin_type_char.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* eval.c (evaluate_subexp_standard): Use exp->gdbarch types instead
+	of builtin_type_ macros when handling OP_OBJC_ operations.
+	* objc-lang.c (print_object_command): Likewise.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* ada-valprint.c: Include "objfiles.h".
+	(ada_val_print_1): Use the gdbarch associated with the objfile whether
+	a System.Address type is defined to retrieve the proper pointer type
+	to use to print it.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* ada-lang.c (value_pos_atr): Add TYPE argument.  Use it as
+	result type instead of builtin_type_int.
+	(value_subscript_packed): Use pos_atr instead of value_pos_atr.
+	(ada_value_subscript): Update call to value_pos_atr.
+	(ada_value_ptr_subscript): Likewise.
+	(ada_evaluate_subexp): Likewise.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* ada-lang.c (cast_to_fixed): Do not cast to builtin_type_double.
+	(cast_from_fixed_to_double): Rename to ...
+	(cast_from_fixed): ... this.  Add TYPE parameter.  Use it instead
+	of builtin_type_double.
+	(ada_value_cast): Use cast_from_fixed instead of casting result
+	of cast_from_fixed_to_double.
+	(ada_evaluate_subexp): Update calls to cast_from_fixed_to_double. 
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* valops.c (value_ind): No longer allow dereferencing an
+	integer type.
+	* eval.c (evaluate_subexp_standard): Handle deferencing an
+	integer type here.
+	* ada-lang.c (ada_evaluate_subexp): Likewise.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* ada-valprint.c (ada_val_print_1): When implicitly dereferencing
+	a reference type, pass the reference type directly to unpack_pointer.
+	* c-valprint.c (c_val_print): Likewise.
+	* f-valprint.c (f_val_print): Likewise.
+	* m2-valprint.c (print_variable_at_address, m2_val_print): Likewise.
+	* p-valprint.c (pascal_val_print): Likewise.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* eval.c (evaluate_subexp_standard): Use builtin_type_int8
+	to construct the EVAL_SKIP dummy return value.
+	* ada-lang.c (ada_evaluate_subexp): Likewise.
+	* jv-lang.c (evaluate_subexp_java): Likewise.
+	* m2-lang.c (evaluate_subexp_modula2): Likewise.
+	* scm-lang.c (evaluate_exp): Likewise.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* value.h (coerce_enum, coerce_number): Remove prototypes.
+	* value.c (coerce_enum, coerce_number): Remove.
+	* valarith.c (value_x_binop): Do not call coerce_enum.
+	(value_x_unop): Likewise.
+	(value_logical_not): Call coerce_array instead of coerce_number.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* ax-gdb.c: Include "language.h".
+	(gen_frame_args_address): Add GDBARCH parameter; use it
+	instead of current_gdbarch.
+	(gen_frame_locals_address): Likewise.
+	(gen_var_ref): Add GDBARCH parameter.  Update calls to
+	gen_frame_args_address and gen_frame_locals_address.  Use
+	pointer type from gdbarch.
+	(gen_usual_unary): Add EXP parameter.  Use integer type
+	from exp->gdbarch.
+	(gen_usual_arithmetic): Likewise.
+	(gen_integral_promotions): Likewise.
+	(gen_add, gen_sub): Remove.
+	(gen_ptradd, gen_ptrsub, gen_ptrdiff): New functions.
+	(gen_logical_not): Use passed-in boolean result type
+	instead of builtin_type_int.
+	(gen_complement): Do not call gen_usual_unary or
+	gen_integral_promotions.
+	(gen_struct_ref): Call require_rvalue instead of gen_usual_unary.
+	(gen_repeat): Add EXP parameter.  Update call to gen_expr.
+	Use builtin_type_int32 as internal range type.
+	(gen_sizeof): Add EXP and SIZE_TYPE parameters.  Use SIZE_TYPE
+	as result type.  Update call to gen_expr.
+	(gen_expr): Add EXP parameter.  Update calls to gen_expr,
+	gen_repeat, gen_var_ref, gen_usual_unary, gen_usual_arithmetic,
+	and gen_integral_promotions.  Call gen_ptradd, gen_ptrsub,
+	gen_ptrdiff, or gen_binop instead of gen_add or gen_sub.
+	Use exp->gdbarch instead of current_gdbarch.
+	Call language_bool_type to determine result type of UNOP_LOGICAL_NOT.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* eval.c (evaluate_subexp_standard): Add calls to binop_promote
+	and unop_promote before calling value_binop et. al.
+	* ada-lang.c (ada_evaluate_subexp): Add calls to binop_promote
+	and unop_promote before calling value_binop et. al.
+
+	* valarith.c (value_binop): Do not call binop_promote or unop_promote.
+	(value_pos): Do not call unop_promote.
+	(value_neg, value_complement): Likewise.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* value.h (unop_promote, binop_promote): Add prototypes.
+	* eval.c (unop_promote, binop_promote): New functions.
+	* valarith.c (unop_result_type, binop_result_type): Remove.
+	(value_binop): Call binop_promote or unop_promote.
+	Inline remaining parts of binop_result_type.  Remove special
+	code to truncate integer values for unsigned operations.
+	(value_pos): Call unop_promote.  Inline remaining parts of
+	unop_result_type.
+	(value_neg, value_complement): Likewise.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* value.h (value_add, value_sub): Remove.
+	(value_ptradd, value_ptrsub, value_ptrdiff): Add prototypes.
+	* valarith.c (value_add, value_sub): Remove.
+	(value_ptradd, value_ptrsub, value_ptrdiff): New functions.
+	(find_size_for_pointer_math): Add assertion.  Update comment.
+	(value_binop): Update comment.
+
+	* eval.c (ptrmath_type_p): New function.
+	(evaluate_subexp_standard): Replace value_add and value_sub
+	by value_ptradd, value_ptrsub, value_ptrdiff or value_binop.
+	Use builtin_type_uint8 instead of builtin_type_char to hold
+	the increment for BINOP_{PRE,POST}{IN,DE}CREMENT operations.
+	* valarith.c (value_subscript): Replace value_add by
+	value_ptradd.  Replace value_sub by value_binop.
+	* ada-lang.c (ada_value_ptr_subscript): Likewise.
+	(ada_tag_name_2): Replace value_add by value_ptradd.
+	(ada_evaluate_subexp): Replace value_add and value_sub by
+	value_binop.
+	* m2-lang.c (evaluate_subexp_modula2): Replace value_add
+	by value_ptradd.
+	* gnu-v2-abi.c (gnuv2_virtual_fn_field): Likewise.
+	* gnu-v3-abi.c (gnuv3_method_ptr_to_value): Likewise.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* eval.c (evaluate_subexp_for_sizeof): Use builtin_int type of
+	the expression architecture instead of builtin_type_int as the
+	sizeof return type.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* expression.h (enum exp_opcode): Document OP_COMPLEX to take
+	a type parameter as expression element.
+	* eval.c (evaluate_subexp_standard) [OP_COMPLEX]: Retrieve result
+	type as expression element.
+	* f-exp.y: Pass in type when buildin OP_COMPLEX expression.
+	* parse.c (operator_length_standard): Update length of OP_COMPLEX.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* language.h (struct language_arch_info): New members
+	bool_type_default and bool_type_symbol.
+	(lang_bool_type): Remove prototype.
+	(LA_BOOL_TYPE): Remove macro.
+	(language_bool_type): Add prototype.
+	* language.c (lang_bool_type): Remove.
+	(language_bool_type): New function.
+
+	* value.h (value_in): Change return value to int.
+	* value.c (value_in): Return int instead of struct value *.
+
+	* eval.c (evaluate_subexp_standard): Call language_bool_type instead
+	of using LA_BOOL_TYPE.  Update call to value_in.
+	* ada-lang.c (ada_evaluate_subexp): Call language_bool_type instead
+	of using LA_BOOL_TYPE or builtin_type_int for boolean values.
+
+	* language.c (unknown_language_arch_info): Set bool_type_default member
+	of struct language_arch_info.
+	* ada-lang.c (ada_language_arch_info): Set bool_type_symbol and
+	bool_type_default members of struct language_arch_info.
+	* c-lang.c (c_language_arch_info): Set bool_type_default member
+	of struct language_arch_info.
+	(cplus_language_arch_info): Set bool_type_symbol and bool_type_default
+	members of struct language_arch_info.
+	* f-lang.c (f_language_arch_info): Set bool_type_symbol and
+	bool_type_default members of struct language_arch_info.
+	* jv-lang.c (java_language_arch_info): Set bool_type_symbol and
+	bool_type_default members of struct language_arch_info.
+	* m2-lang.c (m2_language_arch_info): Set bool_type_symbol and
+	bool_type_default members of struct language_arch_info.
+	* p-lang.c (p_language_arch_info): Set bool_type_symbol and
+	bool_type_default members of struct language_arch_info.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* jv-lang.c (enum java_primitive_types): New type.
+	(java_language_arch_info): New function.
+	(java_language): Use it instead of c_language_arch_info.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* value.h (value_bitstring_subscript): New prototype.
+	* valarith.h (value_bitstring_subscript): New function.
+	(value_subscript): No longer handle TYPE_CODE_BITSTRING.
+	* eval.c (evaluate_subexp_standard): Call value_bitstring_subscript
+	instead of value_subscript to handle TYPE_CODE_BITSTRING.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* expression.h (struct expression): New member GDBARCH.
+	* parse.c (parse_exp_in_context): Initialize it.
+	* parser-def.h (parse_gdbarch, parse_language): New macros.
+
+	* ada-exp.y (parse_type): New macro.
+	Replace builtin_type_ macros by using parse_type.
+	Replace current_language by parse_language.
+	* ada-lex.l (processInt): Replace current_gdbarch by parse_gdbarch.
+	Replace builtin_type_ macros.
+
+	* c-exp.y (parse_type): New macro.
+	Replace builtin_type_ macros by using parse_type.
+	(parse_number): Replace current_gdbarch by parse_gdbarch.
+	(yylex): Replace current_language by parse_language.
+
+	* f-exp.y (parse_type, parse_f_type): New macros.
+	Replace builtin_type_ macros by using parse_{f_,}type.
+	(parse_number): Replace current_gdbarch by parse_gdbarch.
+	(yylex): Replace current_language by parse_language.
+
+	* jv-exp.y (parse_type): New macro.
+	(parse_number): Replace builtin_type_ macros by using parse_type.
+
+	* m2-exp.y (parse_type, parse_m2_type): New macros.
+	Replace builtin_type_ macros by using parse_{m2_,}type.
+
+	* objc-exp.y (parse_type): New macro.
+	Replace builtin_type_ macros by using parse_type.
+	(parse_number): Replace current_gdbarch by parse_gdbarch.
+	(yylex): Replace current_language by parse_language.
+
+	* p-exp.y (parse_type): New macro.
+	Replace builtin_type_ macros by using parse_type.
+	(parse_number): Replace current_gdbarch by parse_gdbarch.
+	(yylex): Replace current_language by parse_language.
+
+2008-09-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* parser-defs.h (write_exp_msymbol): Remove TEXT_SYMBOL_TYPE
+	and DATA_SYMBOL_TYPE arguments.
+	* parse.c (write_exp_msymbol): Remove TEXT_SYMBOL_TYPE and
+	DATA_SYMBOL_TYPE arguments.  Replace use of builtin_type_CORE_ADDR.
+	(write_dollar_variable): Update call.
+
+	* ada-exp.y (write_var_or_type): Update call.
+	* c-exp.y: Likewise.
+	* f-exp.y: Likewise.
+	* jv-exp.y: Likewise.
+	* m2-exp.y: Likewise.
+	* objc-exp.y: Likewise.
+	* p-exp.y: Likewise.
+
+2008-09-10  Joel Brobecker  <brobecker@adacore.com>
+
+	* ada-lang.c (ada_parent_type): Add handling of the case where
+	the _parent field is a pointer and/or has a parallel XVS type.
+	(ada_evaluate_subexp) [OP_VAR_VALUE]: When doing an
+	EVAL_AVOID_SIDE_EFFECTS evaluation of a tagged type, return
+	the type of the tag instead of doing forcing an EVAL_NORMAL
+	expression evaluation.
+
+2008-09-10  Paul N. Hilfinger  <hilfinger@adacore.com> 
+	    Joel Brobecker  <brobecker@adacore.com>
+
+	* ada-lang.c (is_digits_suffix): New function.
+	(is_dot_digits_suffix): Remove.
+	(ada_lookup_symbol_list): Remove digits suffix from minimal symbols
+	before looking up in symbol table, and do not use wild matches on them.
+	(wild_match): Reimplement for speed and to allow matching of operator
+	symbols.
+	(is_valid_name_for_wild_match): Return zero for names that do not
+	follow the GNAT encoding.
+
+	(is_name_suffix): Fix typo in comment.
+	(to_record_with_fixed_variant_part): Ditto.
+
+2008-09-10  Pedro Alves  <pedro@codesourcery.com>
+
+	* Makefile.in (gnu-nat.o): New rule.
+
+2008-09-10  Joel Brobecker  <brobecker@adacore.com>
+
+	* ada-lang.c (ada_evaluate_subexp) [OP_ATR_SIZE]: Use
+	archecture-neutral builtin_type_int32 instead of builtin_type_int.
+
+2008-09-10  Joel Brobecker  <brobecker@adacore.com>
+
+	* ada-lang.c (ada_evaluate_subexp) [BINOP_ADD, BINOP_SUB]:
+	Add special handling for pointer types.
+
+2008-09-10  Pedro Alves  <pedro@codesourcery.com>
+
+	* inf-ttrace.c (inf_ttrace_follow_fork): Declare locals at the
+	right scope level.
+	(inf_ttrace_resume, inf_ttrace_wait): Typos.
+
+2008-09-10  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* ada-lang.c (ada_array_length): Use builtin_type_int32 instead
+	of builtin_type_int.
+	(ada_evaluate_subexp) [UNOP_IN_RANGE]: Use operand range type
+	instead of builtin_type_int.
+
 2008-09-09  Pedro Alves  <pedro@codesourcery.com>
 
 	* infrun.c (normal_stop): Run hook-stop last.

@@ -33,6 +33,7 @@
 #include "c-lang.h"
 #include "infcall.h"
 #include "exceptions.h"
+#include "objfiles.h"
 
 /* Encapsulates arguments to ada_val_print.  */
 struct ada_val_print_args
@@ -121,7 +122,7 @@ print_optional_low_bound (struct ui_file *stream, struct type *type)
 	return 0;
       break;
     case TYPE_CODE_UNDEF:
-      index_type = builtin_type_long;
+      index_type = builtin_type_int32;
       /* FALL THROUGH */
     default:
       if (low_bound == 1)
@@ -751,8 +752,8 @@ ada_val_print_1 (struct type *type, const gdb_byte *valaddr0,
 		parray_of_char =
 		  make_pointer_type
 		  (create_array_type
-		   (NULL, builtin_type_char,
-		    create_range_type (NULL, builtin_type_int, 0, 32)), NULL);
+		   (NULL, builtin_type_true_char,
+		    create_range_type (NULL, builtin_type_int32, 0, 32)), NULL);
 
 	      printable_val =
 		value_ind (value_cast (parray_of_char,
@@ -792,18 +793,27 @@ ada_val_print_1 (struct type *type, const gdb_byte *valaddr0,
 	    {
 	      print_scalar_formatted (valaddr, type, format, 0, stream);
 	    }
-          else if (ada_is_system_address_type (type))
+          else if (ada_is_system_address_type (type)
+		   && TYPE_OBJFILE (type) != NULL)
             {
               /* FIXME: We want to print System.Address variables using
                  the same format as for any access type.  But for some
                  reason GNAT encodes the System.Address type as an int,
                  so we have to work-around this deficiency by handling
-                 System.Address values as a special case.  */
+                 System.Address values as a special case.
+
+		 We do this only for System.Address types defined in an
+		 objfile.  For the built-in version of System.Address we
+		 have installed the proper type to begin with.  */
+
+	      struct gdbarch *gdbarch = get_objfile_arch (TYPE_OBJFILE (type));
+	      struct type *ptr_type = builtin_type (gdbarch)->builtin_data_ptr;
+
               fprintf_filtered (stream, "(");
               type_print (type, "", stream, -1);
               fprintf_filtered (stream, ") ");
 	      fputs_filtered (paddress (extract_typed_address
-					(valaddr, builtin_type_void_data_ptr)),
+					(valaddr, ptr_type)),
 			      stream);
             }
 	  else
@@ -891,9 +901,7 @@ ada_val_print_1 (struct type *type, const gdb_byte *valaddr0,
       
       if (TYPE_CODE (elttype) != TYPE_CODE_UNDEF)
         {
-          LONGEST deref_val_int = (LONGEST)
-            unpack_pointer (lookup_pointer_type (builtin_type_void),
-                            valaddr);
+          LONGEST deref_val_int = (LONGEST) unpack_pointer (type, valaddr);
           if (deref_val_int != 0)
             {
               struct value *deref_val =
