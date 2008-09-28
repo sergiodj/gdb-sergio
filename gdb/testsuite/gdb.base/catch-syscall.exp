@@ -1,0 +1,364 @@
+#   Copyright 1997, 1999, 2007, 2008 Free Software Foundation, Inc.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+# This program tests the 'catch syscall' functionality.
+#
+# It was written by Sergio Durigan Junior <sergiodj@linux.vnet.ibm.com>
+# on September/2008.
+
+if { [is_remote target] || ![isnative] } then {
+    continue
+}
+
+set prms_id 0
+set bug_id 0
+
+global srcfile
+set testfile "catch-syscall"
+set srcfile ${testfile}.c
+set binfile ${objdir}/${subdir}/${testfile}
+
+if  { [gdb_compile "${srcdir}/${subdir}/${srcfile}" "${binfile}" executable {debug}] != "" } {
+     untested catch-syscall.exp
+     return -1
+}
+
+# Until "catch syscall" is implemented on other targets...
+if {![istarget "hppa*-hp-hpux*"] && ![istarget "*-linux*"]} then {
+    continue
+}
+
+# Internal procedure used to check if, before any syscall is caught,
+# the command 'info breakpoints' correctly lists the catchpoints AND
+# says that nothing was caught yet.
+proc check_init_info_breakpoints {} {
+    global gdb_prompt
+
+    # Verifying that the catchpoint appears in the 'info breakpoints'
+    # command, but with "<unknown syscall>".
+    set thistest "catch syscall appears in 'info breakpoints'"
+    gdb_test "info breakpoints" ".*catch syscall.*keep y.*syscall \"<unknown syscall>\".*" $thistest
+#    gdb_test_multiple "info breakpoints" $thistest {
+#        -re ".*catch syscall.*keep y.*syscall \"unknown syscall\".*$gdb_prompt $" {
+#            pass "$thistest"
+#        }
+#        # Here, we try to match the last '()'. If it exists, then there is
+#        # a syscall already caught (which is impossible).
+#        -re ".*catch syscall.*keep y.*syscall.*().*$gdb_prompt $" {
+#            fail "$thistest (syscall already caught)"
+#        }
+#        -re "$gdb_prompt $" {
+#            fail "$thistest"
+#	}
+#        timeout {
+#            fail "(timeout) $thistest"
+#        }
+#    }
+}
+
+# This procedure checks if, after a syscall catchpoint is hit, the
+# command 'info breakpoints' correctly lists the syscall name.
+proc check_info_breakpoints { syscall_name } {
+    global gdb_prompt
+
+    set thistest "syscall '$syscall_name' appears in 'info breakpoints'"
+    gdb_test "info breakpoints" ".*catch syscall.*keep y.*syscall \"$syscall_name\".*" $thistest
+#    gdb_test_multiple "info breakpoints" $thistest {
+#        -re ".*catch syscall.*keep y.*syscall \"$syscall_name\".*$gdb_prompt $" {
+#            pass "$thistest"
+#        }
+#        -re ".*catch syscall.*keep y.*syscall \"unknown syscall\".*$gdb_prompt $" {
+#            fail "$thistest"
+#        }
+#        -re "$gdb_prompt $" {
+#            fail "$thistest"
+#	}
+#        timeout {
+#            fail "(timeout) $thistest"
+#        }
+#    }
+}
+
+# This procedure checks if there was a call to a syscall.
+proc check_call_to_syscall { syscall_name } {
+    global gdb_prompt
+
+    set thistest "program has called '$syscall_name'"
+    gdb_test "continue" "Catchpoint .*(called syscall .$syscall_name ().).*in.*from.*" $thistest
+#    gdb_test_multiple "continue" $thistest {
+#        -re "Catchpoint .*(called syscall '$syscall_name ()'),.*$gdb_prompt $" {
+#            pass "$thistest"
+#        }
+#        -re "$gdb_prompt $" {
+#            fail "$thistest (the catchpoint did not trigger)"
+#        }
+#        timeout {
+#            fail "(timeout) $thistest"
+#        }
+#    }
+
+    # Checking if the syscall is reported to be caught in
+    # 'info breakpoints'.
+    check_info_breakpoints $syscall_name
+}
+
+# This procedure checks if the syscall returned.
+proc check_return_from_syscall { syscall_name } {
+    global gdb_prompt
+
+    set thistest "syscall '$syscall_name' has returned"
+    gdb_test "continue" "Catchpoint .*(returned from syscall .$syscall_name ().).*in.*from.*" $thistest
+#    gdb_test_multiple "continue" $thistest {
+#        -re "Catchpoint .*(returned from syscall '$syscall_name ()'),.*$gdb_prompt $" {
+#            pass "$thistest"
+#        }
+#        -re "$gdb_prompt $" {
+#            fail "$thistest (the catchpoint did not trigger)"
+#        }
+#        timeout {
+#            fail "(timeout) $thistest"
+#        }
+#    }
+
+    # Checking if the syscall is reported to be caught in
+    # 'info breakpoints'.
+    check_info_breakpoints $syscall_name
+}
+
+# Internal procedure that performs two 'continue' commands and checks if
+# a syscall call AND return occur.
+proc check_continue { syscall_name } {
+    global gdb_prompt
+
+    # Testing if the 'continue' stops at the
+    # specified syscall_name. If it does, then it should
+    # first print that the infeior has called the syscall,
+    # and after print that the syscall has returned.
+
+    # Testing if the inferiorr has called the syscall.
+    check_call_to_syscall $syscall_name
+    # And now, that the syscall has returned.
+    check_return_from_syscall $syscall_name
+}
+
+# Inserts a syscall catchpoint with an argument.
+proc insert_catch_syscall_with_arg { syscall_name } {
+    global gdb_prompt
+
+    # Trying to set the syscall
+    set thistest "catch syscall with arguments ($syscall_name)"
+    gdb_test "catch syscall $syscall_name" "Catchpoint .*(syscall .$syscall_name ().).*" $thistest
+
+#    gdb_test_multiple "catch syscall $syscall_name" $thistest {
+#        -re "Catchpoint .*(syscall '$syscall_name ()').*$gdb_prompt $" {
+#            pass "$thistest"
+#        }
+#        -re "$gdb_prompt $" {
+#            fail "$thistest"
+#        }
+#        timeout {
+#            fail "(timeout) $thistest"
+#        }
+#    }
+}
+
+proc check_for_program_end {} {
+    global gdb_prompt
+
+    # Deleting the catchpoints
+    delete_breakpoints
+
+    set thistest "successful program end"
+    gdb_test "continue" "Program exited normally.*" $thistest
+
+#    gdb_test_multiple "continue" $thistest {
+#        -re "Program exited normally.*$gdb_prompt $" {
+#            pass "$thistest"
+#        }
+#        -re "Catchpoint .*(syscall.*$gdb_prompt $" {
+#            fail "$thistest (catchpoints deleted, but GDB still triggered them)"
+#        }
+#        -re "$gdb_prompt $" {
+#            fail "$thistest"
+#        }
+#        timeout {
+#            fail "(timeout) $thistest"
+#        }
+#    }
+}
+
+proc test_catch_syscall_without_args {} {
+    global gdb_prompt
+    # All (but the last) syscalls from the example code
+    # They are ordered according to the file, so do not change this.
+    set all_syscalls { "close" "chroot" }
+    # The last syscall (exit()) does not return, so
+    # we cannot expect the catchpoint to be triggered
+    # twice. It is a special case.
+    set last_syscall "exit_group"
+
+    # Trying to set the syscall
+    set thistest "setting catch syscall without arguments"
+    gdb_test "catch syscall" "Catchpoint .*(syscall).*" $thistest
+
+#    gdb_test_multiple "catch syscall" $thistest {
+#        -re "Catchpoint .*(syscall).*$gdb_prompt $" {
+#            pass "$thistest"
+#        }
+#        -re "$gdb_prompt $" {
+#            fail "$thistest"
+#        }
+#        timeout {
+#            fail "(timeout) $thistest"
+#        }
+#    }
+
+    check_init_info_breakpoints
+
+    # We have to check every syscall
+    foreach name $all_syscalls {
+        check_continue $name
+    }
+
+    # At last but not least, we check if the inferior
+    # has called the last (exit) syscall.
+    check_call_to_syscall $last_syscall
+
+    # Now let's see if the inferior correctly finishes.
+    check_for_program_end
+}
+
+proc test_catch_syscall_with_args {} {
+    global gdb_prompt
+    set syscall_name "close"
+
+    insert_catch_syscall_with_arg $syscall_name 
+    check_init_info_breakpoints
+
+    # Can we continue until we catch the syscall?
+    check_continue $syscall_name
+
+    # Now let's see if the inferior correctly finishes.
+    check_for_program_end
+}
+
+proc test_catch_syscall_with_wrong_args {} {
+    global gdb_prompt
+    # mlock is not called from the source
+    set syscall_name "mlock"
+
+    insert_catch_syscall_with_arg $syscall_name
+    check_init_info_breakpoints
+
+    # Now, we must verify if the program stops with a continue.
+    # If it doesn't, everything is right (since we don't have
+    # a syscall named "mlock" in it). Otherwise, this is a failure.
+    set thistest "catch syscall with unused syscall ($syscall_name)"
+    gdb_test "continue" "Program exited normally.*" $thistest
+#    gdb_test_multiple "continue" $thistest {
+#        -re "Catchpoint .*(called syscall '$syscall_name ()'),.*$gdb_prompt $" {
+#            fail "$thistest"
+#        }
+#        -re "Program exited normally.*$gdb_prompt $" {
+#            pass "$thistest"
+#        }
+#        timeout {
+#            fail "(timeout) $thistest"
+#        }
+#    }
+}
+
+proc test_catch_syscall_restarting_inferior {} {
+    global gdb_prompt
+    set syscall_name "chroot"
+
+    insert_catch_syscall_with_arg $syscall_name
+    check_init_info_breakpoints
+
+    # Let's first reach the call of the syscall.
+    check_call_to_syscall $syscall_name
+
+    # Now, restart the program
+    rerun_to_main
+
+    # And check for call/return
+    check_continue $syscall_name
+
+    # Can we finish?
+    check_for_program_end
+}
+
+proc do_syscall_tests {} {
+    global gdb_prompt
+
+    # Verify that the 'catch syscall' help is available
+    set thistest "help catch syscall"
+    gdb_test "help catch syscall" "Catch calls to syscalls.*" $thistest
+
+#    gdb_test_multiple "help catch syscall" $thistest {
+#        -re "Catch calls to syscalls.*$gdb_prompt $" {
+#            pass "$thistest"
+#        }
+#        -re "$gdb_prompt $" {
+#            fail "$thistest"
+#        }
+#        timeout {
+#            fail "(timeout) $thistest"
+#        }
+#    }
+
+    # Try to set a catchpoint to a nonsense syscall
+    set thistest "catch syscall to a nonsense syscall is prohibited"
+    gdb_test "catch syscall nonsense_syscall" "Invalid syscall name .*" $thistest
+
+#    gdb_test_multiple "catch syscall nonsense_syscall" $thistest {
+#        -re "Invalid syscall name .*$gdb_prompt $" {
+#            pass "$thistest"
+#        }
+#        -re "Catchpoint .*(syscall .*$gdb_prompt $" {
+#            fail "$thistest"
+#        }
+#        timeout {
+#            fail "(timeout) $thistest"
+#        }
+#    }
+
+    # Testing the 'catch syscall' command without arguments.
+    # This test should catch any syscalls.
+    if [runto_main] then { test_catch_syscall_without_args }
+
+    # Testing the 'catch syscall' command with arguments.
+    # This test should only catch the specified syscall.
+    if [runto_main] then { test_catch_syscall_with_args }
+
+    # Testing the 'catch syscall' command with WRONG arguments.
+    # This test should not trigger any catchpoints.
+    if [runto_main] then { test_catch_syscall_with_wrong_args }
+
+    # Testing the 'catch' syscall command during a restart of
+    # the inferior.
+    if [runto_main] then { test_catch_syscall_restarting_inferior }
+}
+
+# Start with a fresh gdb
+
+gdb_exit
+gdb_start
+gdb_reinitialize_dir $srcdir/$subdir
+gdb_load ${binfile}
+
+# Execute the tests
+do_syscall_tests

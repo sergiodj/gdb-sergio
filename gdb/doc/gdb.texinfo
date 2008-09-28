@@ -3578,6 +3578,12 @@ A failed Ada assertion.
 A call to @code{exec}.  This is currently only available for HP-UX
 and @sc{gnu}/Linux.
 
+@item syscall
+@itemx syscall @var{syscall name}
+@cindex break on call to/return from a system call
+A call to/return from a @code{syscall} -- similar to the @code{strace}
+utility.
+
 @item fork
 A call to @code{fork}.  This is currently only available for HP-UX
 and @sc{gnu}/Linux.

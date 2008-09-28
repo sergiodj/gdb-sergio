@@ -836,6 +836,8 @@ extern void enable_watchpoints_after_interactive_call_stop (void);
 extern enum command_control_type commands_from_control_command
   (char *arg, struct command_line *cmd);
 
+extern void clear_syscall_catchpoints_info (void);
+
 extern void clear_breakpoint_hit_counts (void);
 
 extern int get_number (char **);

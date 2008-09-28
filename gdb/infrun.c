@@ -3001,8 +3001,7 @@ infrun: BPSTAT_WHAT_SET_LONGJMP_RESUME (!gdbarch_get_longjmp_target)\n");
            are catching syscalls. */
         if (debug_infrun)
           fprintf_unfiltered (gdb_stdlog, "infrun: BPSTAT_WHAT_ENTRY_BREAKPOINT\n");
-        if (catch_syscall_enabled () > 0)
-          target_enable_tracesysgood (ecs->ptid);
+        target_enable_tracesysgood (ecs->ptid);
         ecs->event_thread->stepping_over_breakpoint = 1;
         break;
 

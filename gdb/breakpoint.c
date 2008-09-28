@@ -404,6 +404,18 @@ set_breakpoint_count (int num)
 		   value_from_longest (builtin_type_int, (LONGEST) num));
 }
 
+/* Used in run_command to reset syscall catchpoints fields. */
+
+void
+clear_syscall_catchpoints_info (void)
+{
+  struct breakpoint *b;
+
+  ALL_BREAKPOINTS (b)
+    if (b->type == bp_catch_syscall)
+      b->syscall_number = UNKNOWN_SYSCALL;
+}
+
 /* Used in run_command to zero the hit count when a new run starts. */
 
 void
@@ -2904,9 +2916,24 @@ bpstat_check_location (const struct bp_location *bl, CORE_ADDR bp_addr)
       && !inferior_has_execd (inferior_ptid, &b->exec_pathname))
     return 0;
 
-  if ((b->type == bp_catch_syscall)
-      && !inferior_has_called_syscall (inferior_ptid, &b->syscall_number))
-    return 0;
+  /* We must check if we are catching specific syscalls in this breakpoint.
+     If we are, then we must guarantee that the called syscall is the same
+     syscall we are catching. */
+  if (b->type == bp_catch_syscall)
+    {
+      int syscall_number;
+      if (!inferior_has_called_syscall (inferior_ptid, &syscall_number))
+        return 0;
+      /* Now, checking if the syscall is the same. */
+      if (b->syscall_to_be_caught != CATCHING_ANY_SYSCALL
+          && b->syscall_to_be_caught != syscall_number)
+        /* Not the same. */
+        return 0;
+
+      /* It's the same syscall. We can update the breakpoint struct
+         with the correct information. */
+      b->syscall_number = syscall_number;
+    }
 
   return 1;
 }
@@ -4470,6 +4497,8 @@ set_raw_breakpoint_without_location (enum bptype bptype)
   b->triggered_dll_pathname = NULL;
   b->forked_inferior_pid = null_ptid;
   b->exec_pathname = NULL;
+  b->syscall_to_be_caught = CATCHING_ANY_SYSCALL;
+  b->syscall_number = UNKNOWN_SYSCALL;
   b->ops = NULL;
   b->condition_not_parsed = 0;
 
@@ -8761,7 +8790,9 @@ With an argument, catch only exceptions with the given name."),
 		     catch_exec_command_1,
 		     CATCH_PERMANENT,
 		     CATCH_TEMPORARY);
-  add_catch_command ("syscall", _("Catch calls to syscalls."),
+  add_catch_command ("syscall", _("\
+Catch calls to syscalls.\n\
+With an argument, catch only calls of that syscall."),
                      catch_syscall_command_1,
                      CATCH_PERMANENT,
                      CATCH_TEMPORARY);

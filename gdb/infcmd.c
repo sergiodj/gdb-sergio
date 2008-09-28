@@ -450,6 +450,11 @@ run_command_1 (char *args, int from_tty, int tbreak_at_main)
   kill_if_already_running (from_tty);
   clear_breakpoint_hit_counts ();
 
+  /* If we already caught a syscall catchpoint, then reset its
+     syscall_number information because we are starting all over
+     again. */
+  clear_syscall_catchpoints_info ();
+
   /* Clean up any leftovers from other runs.  Some other things from
      this function should probably be moved into target_pre_inferior.  */
   target_pre_inferior (from_tty);
