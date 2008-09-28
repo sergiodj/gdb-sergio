@@ -3363,7 +3363,7 @@ bpstat_what (bpstat bs)
 /*step_resume */
     {sr, sr, sr, sr, sr, sr, sr, sr, sr, sr},
 /*shlib */
-    {shl, shl, shl, shl, shl, shl, sr, shl, shlr, shlr},
+    {shl, shl, shl, shl, shl, shl, sr, shl, shlr, shl},
 /*catch_shlib */
     {shlr, shlr, shlr, shlr, shlr, shlr, sr, shlr, shlr, shlr},
 /* entry_breakpoint */
