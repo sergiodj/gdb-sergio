@@ -1863,13 +1863,7 @@ bfd_section_from_shdr (bfd *abfd, unsigned int shindex)
       return TRUE;
 
     case SHT_GROUP:
-      /* We need a BFD section for objcopy and relocatable linking,
-	 and it's handy to have the signature available as the section
-	 name.  */
       if (! IS_VALID_GROUP_SECTION_HEADER (hdr))
-	return FALSE;
-      name = group_signature (abfd, hdr);
-      if (name == NULL)
 	return FALSE;
       if (!_bfd_elf_make_section_from_shdr (abfd, hdr, name, shindex))
 	return FALSE;
@@ -3386,7 +3380,7 @@ get_program_header_size (bfd *abfd, struct bfd_link_info *info)
       ++segs;
     }
 
-  if (info->relro)
+  if (info != NULL && info->relro)
     {
       /* We need a PT_GNU_RELRO segment.  */
       ++segs;
@@ -3768,8 +3762,13 @@ _bfd_elf_map_sections_to_segments (bfd *abfd, struct bfd_link_info *info)
 	    }
 
 	  /* Allow interested parties a chance to override our decision.  */
-	  if (last_hdr && info->callbacks->override_segment_assignment)
-	    new_segment = info->callbacks->override_segment_assignment (info, abfd, hdr, last_hdr, new_segment);
+	  if (last_hdr != NULL
+	      && info != NULL
+	      && info->callbacks->override_segment_assignment != NULL)
+	    new_segment
+	      = info->callbacks->override_segment_assignment (info, abfd, hdr,
+							      last_hdr,
+							      new_segment);
 
 	  if (! new_segment)
 	    {
@@ -3944,7 +3943,7 @@ _bfd_elf_map_sections_to_segments (bfd *abfd, struct bfd_link_info *info)
 	  pm = &m->next;
 	}
 
-      if (info->relro)
+      if (info != NULL && info->relro)
 	{
 	  for (m = mfirst; m != NULL; m = m->next)
 	    {
@@ -4128,7 +4127,7 @@ assign_file_positions_for_load_sections (bfd *abfd,
   unsigned int i, j;
 
   if (link_info == NULL
-      && !elf_modify_segment_map (abfd, link_info, FALSE))
+      && !_bfd_elf_map_sections_to_segments (abfd, link_info))
     return FALSE;
 
   alloc = 0;
@@ -6019,7 +6018,7 @@ _bfd_elf_init_private_section_data (bfd *ibfd,
 	  if (elf_section_flags (isec) & SHF_GROUP)
 	    elf_section_flags (osec) |= SHF_GROUP;
 	  elf_next_in_group (osec) = elf_next_in_group (isec);
-	  elf_group_name (osec) = elf_group_name (isec);
+	  elf_section_data (osec)->group = elf_section_data (isec)->group;
 	}
     }
 

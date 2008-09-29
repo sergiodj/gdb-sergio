@@ -1,3 +1,56 @@
+2008-09-27  Tom Tromey  <tromey@redhat.com>
+
+	* NEWS: Update.
+	* macrocmd.c (extract_identifier): Add is_parameter argument.
+	(macro_define_command): Update.
+	(macro_undef_command): Likewise.
+	* macroexp.c (stringify): New function.
+	(find_parameter): Likewise.
+	(gather_arguments): Add nargs argument.  Handle varargs.
+	(substitute_args): Add is_varargs and va_arg_name arguments.
+	Handle varargs, splicing, stringification.  Use find_parameter.
+	(expand): Handle varargs.
+
+2008-09-27  Tom Tromey  <tromey@redhat.com>
+
+	* scm-lang.c (scm_language_defn): Update.
+	* p-typeprint.c (pascal_print_typedef): New function.
+	* p-lang.h: (pascal_print_typedef): Declare.
+	* p-lang.c (pascal_language_defn): Update.
+	* objc-lang.c (objc_language_defn): Update.
+	* m2-typeprint.c (m2_print_typedef): New function.
+	* m2-lang.h (m2_print_typedef): Declare.
+	* m2-lang.c (m2_language_defn): Update.
+	* language.h (_LANG_c, _LANG_m2, _LANG_fortran, _LANG_pascal):
+	Remove.
+	(struct language_defn) <la_print_typedef>: New field.
+	(default_print_typedef): Declare.
+	(LA_PRINT_TYPEDEF): New define.
+	* language.c (unknown_language_defn): Update.
+	(auto_language_defn): Update.
+	(local_language_defn): Update.
+	* jv-lang.c (java_language_defn): Update.
+	* f-lang.c (f_language_defn): Update.
+	* c-typeprint.c (c_print_typedef): New function.
+	* c-lang.h (c_print_typedef): Declare.
+	* c-lang.c (c_language_defn): Update.
+	(cplus_language_defn): Update.
+	(asm_language_defn): Update.
+	(minimal_language_defn): Update.
+	* ada-lang.c (ada_language_defn): Update.
+	* typeprint.c (default_print_typedef): New function.
+
+2008-09-27  Tom Tromey  <tromey@redhat.com>
+
+	* jv-exp.y (insert_exp): Define using ISO syntax.
+	(copy_exp): Likewise.
+	(push_expression_name): Likewise.
+	(push_fieldnames): Likewise.
+	(java_type_from_name): Likewise.
+	(yyerror): Likewise.
+	(yylex): Likewise.
+	(parse_number): Likewise.
+
 2008-09-26  Joel Brobecker  <brobecker@adacore.com>
 
 	* MAINTAINERS (GLOBAL MAINTAINERS): Add Pedro Alves.
