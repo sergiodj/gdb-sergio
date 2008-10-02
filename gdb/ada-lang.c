@@ -57,10 +57,6 @@
 #include "observer.h"
 #include "vec.h"
 
-#ifndef ADA_RETAIN_DOTS
-#define ADA_RETAIN_DOTS 0
-#endif
-
 /* Define whether or not the C operator '/' truncates towards zero for
    differently signed operands (truncation direction is undefined in C). 
    Copied from valarith.c.  */
@@ -205,8 +201,6 @@ static int lesseq_defined_than (struct symbol *, struct symbol *);
 static int equiv_types (struct type *, struct type *);
 
 static int is_name_suffix (const char *);
-
-static int is_digits_suffix (const char *str);
 
 static int wild_match (const char *, int, const char *);
 
@@ -814,7 +808,7 @@ ada_encode (const char *decoded)
   k = 0;
   for (p = decoded; *p != '\0'; p += 1)
     {
-      if (!ADA_RETAIN_DOTS && *p == '.')
+      if (*p == '.')
         {
           encoding_buffer[k] = encoding_buffer[k + 1] = '_';
           k += 2;
@@ -1136,8 +1130,7 @@ ada_decode (const char *encoded)
           if (i < len0)
             goto Suppress;
         }
-      else if (!ADA_RETAIN_DOTS
-               && i < len0 - 2 && encoded[i] == '_' && encoded[i + 1] == '_')
+      else if (i < len0 - 2 && encoded[i] == '_' && encoded[i + 1] == '_')
         {
          /* Replace '__' by '.'.  */
           decoded[j] = '.';
@@ -5027,17 +5020,6 @@ is_name_suffix (const char *str)
   return 0;
 }
 
-/* Return nonzero if the given string contains only digits.
-   The empty string also matches.  */
-
-static int
-is_digits_suffix (const char *str)
-{
-  while (isdigit (str[0]))
-    str++;
-  return (str[0] == '\0');
-}
-
 /* Return non-zero if the string starting at NAME and ending before
    NAME_END contains no capital letters.  */
 
@@ -6408,9 +6390,19 @@ ada_lookup_struct_elt_type (struct type *type, char *name, int refok,
 
           for (j = TYPE_NFIELDS (field_type) - 1; j >= 0; j -= 1)
             {
+	      /* FIXME pnh 2008/01/26: We check for a field that is
+	         NOT wrapped in a struct, since the compiler sometimes
+		 generates these for unchecked variant types.  Revisit
+	         if the compiler changes this practice. */
+	      char *v_field_name = TYPE_FIELD_NAME (field_type, j);
               disp = 0;
-              t = ada_lookup_struct_elt_type (TYPE_FIELD_TYPE (field_type, j),
-                                              name, 0, 1, &disp);
+	      if (v_field_name != NULL 
+		  && field_name_match (v_field_name, name))
+		t = ada_check_typedef (TYPE_FIELD_TYPE (field_type, j));
+	      else
+		t = ada_lookup_struct_elt_type (TYPE_FIELD_TYPE (field_type, j),
+						name, 0, 1, &disp);
+
               if (t != NULL)
                 {
                   if (dispp != NULL)
@@ -6445,6 +6437,20 @@ BadName:
 
   return NULL;
 }
+
+/* Assuming that VAR_TYPE is the type of a variant part of a record (a union),
+   within a value of type OUTER_TYPE, return true iff VAR_TYPE
+   represents an unchecked union (that is, the variant part of a
+   record that is named in an Unchecked_Union pragma). */
+
+static int
+is_unchecked_variant (struct type *var_type, struct type *outer_type)
+{
+  char *discrim_name = ada_variant_discrim_name (var_type);
+  return (ada_lookup_struct_elt_type (outer_type, discrim_name, 0, 1, NULL) 
+	  == NULL);
+}
+
 
 /* Assuming that VAR_TYPE is the type of a variant part of a record (a union),
    within a value of type OUTER_TYPE that is stored in GDB at
@@ -6817,6 +6823,7 @@ empty_record (struct objfile *objfile)
   TYPE_CODE (type) = TYPE_CODE_STRUCT;
   TYPE_NFIELDS (type) = 0;
   TYPE_FIELDS (type) = NULL;
+  INIT_CPLUS_SPECIFIC (type);
   TYPE_NAME (type) = "<empty>";
   TYPE_TAG_NAME (type) = NULL;
   TYPE_LENGTH (type) = 0;
@@ -6938,7 +6945,7 @@ ada_template_to_fixed_record_type_1 (struct type *type,
     }
 
   /* We handle the variant part, if any, at the end because of certain
-     odd cases in which it is re-ordered so as NOT the last field of
+     odd cases in which it is re-ordered so as NOT to be the last field of
      the record.  This can happen in the presence of representation
      clauses.  */
   if (variant_field >= 0)
@@ -7185,7 +7192,8 @@ to_fixed_record_type (struct type *type0, const gdb_byte *valaddr,
    union type.  Any necessary discriminants' values should be in DVAL,
    a record value.  That is, this routine selects the appropriate
    branch of the union at ADDR according to the discriminant value
-   indicated in the union's type name.  */
+   indicated in the union's type name.  Returns VAR_TYPE0 itself if
+   it represents a variant subject to a pragma Unchecked_Union. */
 
 static struct type *
 to_fixed_variant_branch_type (struct type *var_type0, const gdb_byte *valaddr,
@@ -7205,6 +7213,8 @@ to_fixed_variant_branch_type (struct type *var_type0, const gdb_byte *valaddr,
   if (templ_type != NULL)
     var_type = templ_type;
 
+  if (is_unchecked_variant (var_type, value_type (dval)))
+      return var_type0;
   which =
     ada_which_variant_applies (var_type,
                                value_type (dval), value_contents (dval));
@@ -9103,9 +9113,7 @@ ada_evaluate_subexp (struct type *expect_type, struct expression *exp,
         return arg1;
 
     case UNOP_IND:
-      if (expect_type && TYPE_CODE (expect_type) == TYPE_CODE_PTR)
-        expect_type = TYPE_TARGET_TYPE (ada_check_typedef (expect_type));
-      arg1 = evaluate_subexp (expect_type, exp, pos, noside);
+      arg1 = evaluate_subexp (NULL_TYPE, exp, pos, noside);
       if (noside == EVAL_SKIP)
         goto nosideret;
       type = ada_check_typedef (value_type (arg1));
@@ -9131,22 +9139,34 @@ ada_evaluate_subexp (struct type *expect_type, struct expression *exp,
               return value_zero (type, lval_memory);
             }
           else if (TYPE_CODE (type) == TYPE_CODE_INT)
-            /* GDB allows dereferencing an int.  */
-            return value_zero (builtin_type (exp->gdbarch)->builtin_int,
-			       lval_memory);
+	    {
+	      /* GDB allows dereferencing an int.  */
+	      if (expect_type == NULL)
+		return value_zero (builtin_type (exp->gdbarch)->builtin_int,
+				   lval_memory);
+	      else
+		{
+		  expect_type = 
+		    to_static_fixed_type (ada_aligned_type (expect_type));
+		  return value_zero (expect_type, lval_memory);
+		}
+	    }
           else
             error (_("Attempt to take contents of a non-pointer value."));
         }
       arg1 = ada_coerce_ref (arg1);     /* FIXME: What is this for?? */
       type = ada_check_typedef (value_type (arg1));
 
+      if (TYPE_CODE (type) == TYPE_CODE_INT && expect_type != NULL)
+	  /* GDB allows dereferencing an int.  We give it the expected
+	     type (which will be set in the case of a coercion or
+	     qualification). */
+	return ada_value_ind (value_cast (lookup_pointer_type (expect_type),
+					  arg1));
+
       if (ada_is_array_descriptor_type (type))
         /* GDB allows dereferencing GNAT array descriptors.  */
         return ada_coerce_to_simple_array (arg1);
-      else if (TYPE_CODE (type) == TYPE_CODE_INT)
-	/* GDB allows dereferencing an int.  */
-	return value_at_lazy (builtin_type (exp->gdbarch)->builtin_int,
-			      (CORE_ADDR) value_as_address (arg1));
       else
         return ada_value_ind (arg1);
 
@@ -9593,7 +9613,7 @@ ada_is_modular_type (struct type *type)
 ULONGEST
 ada_modulus (struct type * type)
 {
-  return (ULONGEST) TYPE_HIGH_BOUND (type) + 1;
+  return (ULONGEST) (unsigned int) TYPE_HIGH_BOUND (type) + 1;
 }
 
 
@@ -9643,6 +9663,15 @@ enum exception_catchpoint_kind
   ex_catch_exception,
   ex_catch_exception_unhandled,
   ex_catch_assert
+};
+
+/* Ada's standard exceptions.  */
+
+static char *standard_exc[] = {
+  "constraint_error",
+  "program_error",
+  "storage_error",
+  "tasking_error"
 };
 
 typedef CORE_ADDR (ada_unhandled_exception_name_addr_ftype) (void);
@@ -10329,6 +10358,35 @@ ada_exception_breakpoint_ops (enum exception_catchpoint_kind ex)
 static char *
 ada_exception_catchpoint_cond_string (const char *exp_string)
 {
+  int i;
+
+  /* The standard exceptions are a special case. They are defined in
+     runtime units that have been compiled without debugging info; if
+     EXP_STRING is the not-fully-qualified name of a standard
+     exception (e.g. "constraint_error") then, during the evaluation
+     of the condition expression, the symbol lookup on this name would
+     *not* return this standard exception. The catchpoint condition
+     may then be set only on user-defined exceptions which have the
+     same not-fully-qualified name (e.g. my_package.constraint_error).
+
+     To avoid this unexcepted behavior, these standard exceptions are
+     systematically prefixed by "standard". This means that "catch
+     exception constraint_error" is rewritten into "catch exception
+     standard.constraint_error".
+
+     If an exception named contraint_error is defined in another package of
+     the inferior program, then the only way to specify this exception as a
+     breakpoint condition is to use its fully-qualified named:
+     e.g. my_package.constraint_error.  */
+
+  for (i = 0; i < sizeof (standard_exc) / sizeof (char *); i++)
+    {
+      if (strcmp (standard_exc [i], exp_string) == 0)
+	{
+          return xstrprintf ("long_integer (e) = long_integer (&standard.%s)",
+                             exp_string);
+	}
+    }
   return xstrprintf ("long_integer (e) = long_integer (&%s)", exp_string);
 }
 
@@ -10935,6 +10993,7 @@ const struct language_defn ada_language_defn = {
   case_sensitive_on,            /* Yes, Ada is case-insensitive, but
                                    that's not quite what this means.  */
   array_row_major,
+  macro_expansion_no,
   &ada_exp_descriptor,
   parse,
   ada_error,

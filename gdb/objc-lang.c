@@ -504,6 +504,7 @@ const struct language_defn objc_language_defn = {
   type_check_off,
   case_sensitive_on,
   array_row_major,
+  macro_expansion_c,
   &exp_descriptor_standard,
   objc_parse,
   objc_error,
@@ -1153,7 +1154,8 @@ find_methods (struct symtab *symtab, char type,
     {
       QUIT;
 
-      if ((msymbol->type != mst_text) && (msymbol->type != mst_file_text))
+      if ((MSYMBOL_TYPE (msymbol) != mst_text)
+	  && (MSYMBOL_TYPE (msymbol) != mst_file_text))
 	/* Not a function or method.  */
 	continue;
 

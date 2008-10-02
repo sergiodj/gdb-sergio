@@ -58,6 +58,8 @@
 #include "observer.h"
 #include "gdb_assert.h"
 #include "solist.h"
+#include "macrotab.h"
+#include "macroscope.h"
 
 /* Prototypes for local functions */
 
@@ -857,11 +859,11 @@ find_pc_sect_psymtab (CORE_ADDR pc, struct obj_section *section)
      not include the data ranges.  */
   msymbol = lookup_minimal_symbol_by_pc_section (pc, section);
   if (msymbol
-      && (msymbol->type == mst_data
-	  || msymbol->type == mst_bss
-	  || msymbol->type == mst_abs
-	  || msymbol->type == mst_file_data
-	  || msymbol->type == mst_file_bss))
+      && (MSYMBOL_TYPE (msymbol) == mst_data
+	  || MSYMBOL_TYPE (msymbol) == mst_bss
+	  || MSYMBOL_TYPE (msymbol) == mst_abs
+	  || MSYMBOL_TYPE (msymbol) == mst_file_data
+	  || MSYMBOL_TYPE (msymbol) == mst_file_bss))
     return NULL;
 
   /* Try just the PSYMTABS_ADDRMAP mapping first as it has better granularity
@@ -1991,11 +1993,11 @@ find_pc_sect_symtab (CORE_ADDR pc, struct obj_section *section)
      on the partial_symtab's texthigh and textlow.  */
   msymbol = lookup_minimal_symbol_by_pc_section (pc, section);
   if (msymbol
-      && (msymbol->type == mst_data
-	  || msymbol->type == mst_bss
-	  || msymbol->type == mst_abs
-	  || msymbol->type == mst_file_data
-	  || msymbol->type == mst_file_bss))
+      && (MSYMBOL_TYPE (msymbol) == mst_data
+	  || MSYMBOL_TYPE (msymbol) == mst_bss
+	  || MSYMBOL_TYPE (msymbol) == mst_abs
+	  || MSYMBOL_TYPE (msymbol) == mst_file_data
+	  || MSYMBOL_TYPE (msymbol) == mst_file_bss))
     return NULL;
 
   /* Search all symtabs for the one whose file contains our address, and which
@@ -2987,7 +2989,6 @@ sort_search_symbols (struct symbol_search *prevtail, int nfound)
    Only symbols of KIND are searched:
    FUNCTIONS_DOMAIN - search all functions
    TYPES_DOMAIN     - search all type names
-   METHODS_DOMAIN   - search all methods NOT IMPLEMENTED
    VARIABLES_DOMAIN - search all symbols, excluding functions, type names,
    and constants (enums)
 
@@ -3128,8 +3129,7 @@ search_symbols (char *regexp, domain_enum kind, int nfiles, char *files[],
 		    && ((kind == VARIABLES_DOMAIN && SYMBOL_CLASS (*psym) != LOC_TYPEDEF
 			 && SYMBOL_CLASS (*psym) != LOC_BLOCK)
 			|| (kind == FUNCTIONS_DOMAIN && SYMBOL_CLASS (*psym) == LOC_BLOCK)
-			|| (kind == TYPES_DOMAIN && SYMBOL_CLASS (*psym) == LOC_TYPEDEF)
-			|| (kind == METHODS_DOMAIN && SYMBOL_CLASS (*psym) == LOC_BLOCK))))
+			|| (kind == TYPES_DOMAIN && SYMBOL_CLASS (*psym) == LOC_TYPEDEF))))
 	      {
 		PSYMTAB_TO_SYMTAB (ps);
 		keep_going = 0;
@@ -3204,8 +3204,7 @@ search_symbols (char *regexp, domain_enum kind, int nfiles, char *files[],
 			   && SYMBOL_CLASS (sym) != LOC_BLOCK
 			   && SYMBOL_CLASS (sym) != LOC_CONST)
 			  || (kind == FUNCTIONS_DOMAIN && SYMBOL_CLASS (sym) == LOC_BLOCK)
-			  || (kind == TYPES_DOMAIN && SYMBOL_CLASS (sym) == LOC_TYPEDEF)
-			  || (kind == METHODS_DOMAIN && SYMBOL_CLASS (sym) == LOC_BLOCK))))
+			  || (kind == TYPES_DOMAIN && SYMBOL_CLASS (sym) == LOC_TYPEDEF))))
 		{
 		  /* match */
 		  psr = (struct symbol_search *) xmalloc (sizeof (struct symbol_search));
@@ -3640,6 +3639,29 @@ language_search_unquoted_string (char *text, char *p)
   return p;
 }
 
+/* Type of the user_data argument passed to add_macro_name.  The
+   contents are simply whatever is needed by
+   completion_list_add_name.  */
+struct add_macro_name_data
+{
+  char *sym_text;
+  int sym_text_len;
+  char *text;
+  char *word;
+};
+
+/* A callback used with macro_for_each and macro_for_each_in_scope.
+   This adds a macro's name to the current completion list.  */
+static void
+add_macro_name (const char *name, const struct macro_definition *ignore,
+		void *user_data)
+{
+  struct add_macro_name_data *datum = (struct add_macro_name_data *) user_data;
+  completion_list_add_name ((char *) name,
+			    datum->sym_text, datum->sym_text_len,
+			    datum->text, datum->word);
+}
+
 char **
 default_make_symbol_completion_list (char *text, char *word)
 {
@@ -3825,6 +3847,35 @@ default_make_symbol_completion_list (char *text, char *word)
 	COMPLETION_LIST_ADD_SYMBOL (sym, sym_text, sym_text_len, text, word);
       }
   }
+
+  if (current_language->la_macro_expansion == macro_expansion_c)
+    {
+      struct macro_scope *scope;
+      struct add_macro_name_data datum;
+
+      datum.sym_text = sym_text;
+      datum.sym_text_len = sym_text_len;
+      datum.text = text;
+      datum.word = word;
+
+      /* Add any macros visible in the default scope.  Note that this
+	 may yield the occasional wrong result, because an expression
+	 might be evaluated in a scope other than the default.  For
+	 example, if the user types "break file:line if <TAB>", the
+	 resulting expression will be evaluated at "file:line" -- but
+	 at there does not seem to be a way to detect this at
+	 completion time.  */
+      scope = default_macro_scope ();
+      if (scope)
+	{
+	  macro_for_each_in_scope (scope->file, scope->line,
+				   add_macro_name, &datum);
+	  xfree (scope);
+	}
+
+      /* User-defined macros are always visible.  */
+      macro_for_each (macro_user_macros, add_macro_name, &datum);
+    }
 
   return (return_val);
 }

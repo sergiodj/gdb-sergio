@@ -1,3 +1,140 @@
+2008-10-01  Tom Tromey  <tromey@redhat.com>
+
+	* symtab.c (search_symbols): Update.
+	* symtab.h (domain_enum_tag) <METHODS_DOMAIN>: Remove.
+
+2008-10-01  Tom Tromey  <tromey@redhat.com>
+
+	* symfile.c (syms_from_objfile): Update.
+	(reread_symbols): Update.
+	* objfiles.h (OBJF_SYMS): Remove.
+	(OBJF_REORDERED): Renumber.
+	(OBJF_SHARED): Likewise.
+	(OBJF_READNOW): Likewise.
+	(OBJF_USERLOADED): Likewise.
+
+2008-10-01  Tom Tromey  <tromey@redhat.com>
+
+	* symtab.c (find_pc_sect_psymtab): Use MSYMBOL_TYPE.
+	(find_pc_sect_symtab): Likewise.
+	* symmisc.c (dump_msymbols): Use MSYMBOL_TYPE.
+	* solib-som.c (som_solib_desire_dynamic_linker_symbols): Use
+	MSYMBOL_TYPE, not SYMBOL_TYPE.
+	* parse.c (write_exp_msymbol): Use MSYMBOL_TYPE.
+	* objc-lang.c (find_methods): Use MSYMBOL_TYPE.
+	* minsyms.c (lookup_minimal_symbol_by_pc_section_1): Use
+	MSYMBOL_TYPE.
+	* m2-exp.y (yylex): Use SYMBOL_CLASS.
+
+2008-10-01  Tom Tromey  <tromey@redhat.com>
+
+	* xcoffread.c (RECORD_MINIMAL_SYMBOL): Update.
+	(scan_xcoff_symtab): Update.
+	* mdebugread.c (record_minimal_symbol): Update.
+	(parse_partial_symbols): Update.
+	* elfread.c (record_minimal_symbol): Update.
+	* dbxread.c (record_minimal_symbol): Update.
+	* coffread.c (record_minimal_symbol): Update.
+	* sh64-tdep.c (MSYMBOL_IS_SPECIAL): Redefine.
+	(sh64_elf_make_msymbol_special): Update.
+	* mips-tdep.c (mips_elf_make_msymbol_special): Use
+	MSYMBOL_TARGET_FLAG_1.
+	(mips_elf_make_msymbol_special): Likewise.
+	(msymbol_is_special): Likewise.
+	* minsyms.c (prim_record_minimal_symbol_and_info): Update.
+	(install_minimal_symbols): Likewise.
+	(prim_record_minimal_symbol): Update.
+	(prim_record_minimal_symbol_and_info): Remove 'info' argument.
+	* m68hc11-tdep.c (MSYMBOL_SET_RTC): Redefine.
+	(MSYMBOL_SET_RTI): Redefine.
+	(MSYMBOL_IS_RTC): Redefine.
+	(MSYMBOL_IS_RTI): Redefine.
+	* arm-tdep.c (MSYMBOL_SET_SPECIAL): Redefine.
+	(MSYMBOL_IS_SPECIAL): Redefine.
+	* symtab.h (struct minimal_symbol) <info>: Remove.
+	<target_flag_1, target_flag_2>: New fields.
+	(MSYMBOL_INFO): Remove.
+	(MSYMBOL_TARGET_FLAG_1): New macro.
+	(MSYMBOL_TARGET_FLAG_2): Likewise.
+	(prim_record_minimal_symbol_and_info): Update.
+
+2008-09-30  Joel Brobecker  <brobecker@adacore.com>
+
+	* ada-lang.c (is_digits_suffix): Delete unused function.
+
+2008-09-30  Paul Hilfinger  <hilfinger@adacore.com>
+
+	* ada-lang.c (ada_modulus): Correct to avoid sign problem with
+	moduli >= 2**31.
+
+2008-09-30  Paul Hilfinger  <hilfinger@adacore.com>
+
+	* ada-lang.c (ada_lookup_struct_elt_type): Handle case of a "naked"
+	variant branch.
+	(empty_record): Use INIT_CPLUS_SPECIFIC, since this field is not
+	supposed to be null.  Fixes debugger segfaults.
+	(is_unchecked_variant): New function.
+	(to_fixed_variant_branch_type): Modify to leave unchecked unions
+	untouched.
+	(ada_template_to_fixed_record_type_1): Fix comment.
+
+2008-09-30  Joel Brobecker  <brobecker@adacore.com>
+
+	* ada-lang.c (standard_exc): New static constant.
+	(ada_exception_catchpoint_cond_string): Add special handling
+	for the predefined exceptions.
+
+2008-09-30  Joel Brobecker  <brobecker@adacore.com>
+
+	* ada-lang.c (ADA_RETAIN_DOTS): Delete this dead macro.  Update
+	the code accordingly.
+
+2008-09-30  Joel Brobecker  <brobecker@adacore.com>
+
+	* ada-lang.c (ada_evaluate_subexp) [UNOP_IND]: Remove strange
+	treatment of expect_type. Return the correct type when dereferencing
+	an integer.
+
+2008-09-30  Tom Tromey  <tromey@redhat.com>
+
+	PR gdb/2484:
+	* symtab.c (struct add_macro_name_data): New struct.
+	(add_macro_name): New function.
+	(default_make_symbol_completion_list): Complete macro names.
+	* scm-lang.c (scm_language_defn): Update.
+	* p-lang.c (pascal_language_defn): Update.
+	* objc-lang.c (objc_language_defn): Update.
+	* macrotab.h (macro_callback_fn): Add user_data argument.
+	(macro_for_each): Likewise.
+	(macro_for_each_in_scope): Declare.
+	* macrotab.c: (struct macro_for_each_data): New struct.
+	(foreach_macro): Use it.
+	(macro_for_each): Likewise.
+	(foreach_macro_in_scope): New function.
+	(macro_for_each_in_scope): Likewise.
+	* macrocmd.c (print_one_macro): Add argument.
+	(macro_list_command): Pass NULL to macro_for_each.
+	* m2-lang.c (m2_language_defn): Update.
+	* language.h (struct language_defn) <la_macro_expansion>: New
+	field.
+	(macro_expansion): New enum.
+	* language.c (unknown_language_defn): Update.  Fix order of
+	initializers.
+	(auto_language_defn): Likewise.
+	(local_language_defn): Update.
+	* jv-lang.c (java_language_defn): Update.
+	* f-lang.c (f_language_defn): Update.
+	* c-lang.c (c_language_defn): Update.
+	(cplus_language_defn): Likewise.
+	(asm_language_defn): Likewise.
+	(minimal_language_defn): Likewise.
+	* ada-lang.c (ada_language_defn): Update.
+
+2008-09-30  Joel Brobecker  <brobecker@adacore.com>
+
+	* dwarf2read.c (dwarf2_get_subprogram_pc_bounds): New function.
+	(get_scope_pc_bounds): Use it.
+
 2008-09-27  Tom Tromey  <tromey@redhat.com>
 
 	* NEWS: Update.
