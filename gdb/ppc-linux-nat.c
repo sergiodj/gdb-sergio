@@ -588,6 +588,70 @@ fetch_altivec_registers (struct regcache *regcache, int tid)
   supply_vrregset (regcache, &regs);
 }
 
+static void
+fetch_gp_regs (struct regcache *regcache, int tid)
+{
+  struct gdbarch *gdbarch = get_regcache_arch (regcache);
+  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+  int i;
+  gdb_gregset_t gregset;
+
+  gdb_assert (tdep->wordsize == 4 || tdep->wordsize == 8);
+
+  if (tdep->wordsize == 4)
+    {
+#ifdef HAVE_PTRACE_GETREGS
+      /* PPC 32-bit.  */
+      if (ptrace (PTRACE_GETREGS, tid, 0, (int) &gpregs) < 0)
+        perror_with_name (_("Couldn't get general-purpose registers."));
+
+      supply_gregset (regcache, (const gdb_gregset_t *) &gregset);
+      return;
+#endif /* HAVE_PTRACE_GETREGS */
+    }
+  else if (tdep->wordsize == 8)
+    {
+#ifdef HAVE_PTRACE_GETREGS64
+      /* PPC 64-bit.  */
+      if (ptrace (PTRACE_GETREGS64, tid, 0, (int) &gpregs) < 0)
+        perror_with_name (_("Couldn't get general-purpose registers."));
+
+      supply_gregset (regcache, (const gdb_gregset_t *) &gregset);
+      return;
+#endif /* HAVE_PTRACE_GETREGS64 */
+    }
+
+  /* If we've hit this point, it doesn't really matter which
+     architecture we are using.  We just need to read the
+     registers in the "old-fashioned way".  */
+  for (i = 0; i < ppc_num_gprs; i++)
+    fetch_register (regcache, tid, tdep->ppc_gp0_regnum + i);
+}
+
+#ifdef HAVE_PTRACE_GETFPREGS
+
+static void
+fetch_fp_regs (struct regcache *regcache, int tid)
+{
+  gdb_fpregset_t fpregs;
+
+  if (ptrace (PTRACE_GETFPREGS, tid, 0, (int) &fpregs) < 0)
+    perror_with_name (_("Couldn't get floating point status"));
+
+  supply_fpregset (regcache, (const gdb_fpregset_t *) &fpregs);
+}
+
+#else /* HAVE_PTRACE_GETFPREGS */
+
+static void
+fetch_fp_regs (struct regcache *regcache, int tid)
+{
+  internal_error (__FILE__, __LINE__,
+                  "The function should not be called.");
+}
+
+#endif /* HAVE_PTRACE_GEFPTREGS */
+
 static void 
 fetch_ppc_registers (struct regcache *regcache, int tid)
 {
@@ -595,11 +659,14 @@ fetch_ppc_registers (struct regcache *regcache, int tid)
   struct gdbarch *gdbarch = get_regcache_arch (regcache);
   struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
 
-  for (i = 0; i < ppc_num_gprs; i++)
-    fetch_register (regcache, tid, tdep->ppc_gp0_regnum + i);
+  fetch_gp_regs (regcache, tid);
   if (tdep->ppc_fp0_regnum >= 0)
+#ifdef HAVE_PTRACE_GETFPREGS
+    fetch_fp_regs (regcache, tid);
+#else /* HAVE_PTRACE_GETFPREGS */
     for (i = 0; i < ppc_num_fprs; i++)
       fetch_register (regcache, tid, tdep->ppc_fp0_regnum + i);
+#endif /* HAVE_PTRACE_GETFPREGS */
   fetch_register (regcache, tid, gdbarch_pc_regnum (gdbarch));
   if (tdep->ppc_ps_regnum != -1)
     fetch_register (regcache, tid, tdep->ppc_ps_regnum);
@@ -957,17 +1024,92 @@ store_altivec_registers (const struct regcache *regcache, int tid)
 }
 
 static void
+store_gp_regs (const struct regcache *regcache, int tid, int regno)
+{
+  struct gdbarch *gdbarch = get_regcache_arch (regcache);
+  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+  int i;
+  gdb_gregset_t gregset;
+
+  gdb_assert (tdep->wordsize == 4 || tdep->wordsize == 8);
+
+  if (tdep->wordsize == 4)
+    {
+#if defined(HAVE_PTRACE_SETREGS) && defined(HAVE_PTRACE_GETREGS)
+      /* PPC 32-bit.  */
+      if (ptrace (PTRACE_GETREGS, tid, 0, (int) &gpregs) < 0)
+        perror_with_name (_("Couldn't get general-purpose registers."));
+
+      fill_gregset (regcache, (const gdb_gregset_t *) &gregset, regno);
+
+      if (ptrace (PTRACE_SETREGS, tid, 0, (int) &gpregs) < 0)
+        perror_with_name (_("Couldn't get general-purpose registers."));
+      return;
+#endif /* HAVE_PTRACE_SETREGS && HAVE_PTRACE_GETREGS */
+    }
+  else if (tdep->wordsize == 8)
+    {
+#if defined(HAVE_PTRACE_SETREGS64) && defined(HAVE_PTRACE_GETREGS64)
+      /* PPC 64-bit.  */
+      if (ptrace (PTRACE_GETREGS64, tid, 0, (int) &gpregs) < 0)
+        perror_with_name (_("Couldn't get general-purpose registers."));
+
+      fill_gregset (regcache, (const gdb_gregset_t *) &gregset, regno);
+
+      if (ptrace (PTRACE_SETREGS64, tid, 0, (int) &gpregs) < 0)
+        perror_with_name (_("Couldn't get general-purpose registers."));
+      return;
+#endif /* HAVE_PTRACE_SETREGS64 && HAVE_PTRACE_GETREGS64 */
+    }
+  /* If we've hit this point, it doesn't really matter which
+     architecture we are using.  We just need to store the
+     registers in the "old-fashioned way".  */
+  for (i = 0; i < ppc_num_gprs; i++)
+    store_register (regcache, tid, tdep->ppc_gp0_regnum + i);
+}
+
+#if defined(HAVE_PTRACE_SETFPREGS) && defined(HAVE_PTRACE_GETFPREGS)
+
+static void
+store_fp_regs (const struct regcache *regcache, int tid, int regno)
+{
+  gdb_fpregset_t fpregs;
+
+  if (ptrace (PTRACE_GETFPREGS, tid, 0, (int) &fpregs) < 0)
+    perror_with_name (_("Couldn't get floating point status"));
+
+  fill_fpregset (regcache, &fpregs, regno);
+
+  if (ptrace (PTRACE_SETFPREGS, tid, 0, (int) &fpregs) < 0)
+    perror_with_name (_("Couldn't write floating point status"));
+}
+
+#else /* HAVE_PTRACE_SETFPREGS && HAVE_PTRACE_GETFPREGS */
+
+static void
+store_fp_regs (const struct regcache *regcache, int tid)
+{
+  internal_error (__FILE__, __LINE__,
+                  "The function should not be called.");
+}
+
+#endif /* HAVE_PTRACE_SETFPREGS && HAVE_PTRACE_GETFPREGS */
+
+static void
 store_ppc_registers (const struct regcache *regcache, int tid)
 {
   int i;
   struct gdbarch *gdbarch = get_regcache_arch (regcache);
   struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
-  
-  for (i = 0; i < ppc_num_gprs; i++)
-    store_register (regcache, tid, tdep->ppc_gp0_regnum + i);
+ 
+  store_gp_regs (regcache, tid, -1);
   if (tdep->ppc_fp0_regnum >= 0)
+#if defined(HAVE_PTRACE_SETFPREGS) && defined(HAVE_PTRACE_GETFPREGS)
+    store_fp_regs (regcache, tid, -1);
+#else /* HAVE_PTRACE_SETFPREGS && HAVE_PTRACE_GETFPREGS */
     for (i = 0; i < ppc_num_fprs; i++)
       store_register (regcache, tid, tdep->ppc_fp0_regnum + i);
+#endif /* HAVE_PTRACE_SETFPREGS && HAVE_PTRACE_GETFPREGS */
   store_register (regcache, tid, gdbarch_pc_regnum (gdbarch));
   if (tdep->ppc_ps_regnum != -1)
     store_register (regcache, tid, tdep->ppc_ps_regnum);
