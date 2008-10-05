@@ -3136,7 +3136,7 @@ infrun: BPSTAT_WHAT_SET_LONGJMP_RESUME (!gdbarch_get_longjmp_target)\n");
       if (real_stop_pc != 0)
 	ecs->stop_func_start = real_stop_pc;
 
-      if (in_solib_dynsym_resolve_code (ecs->stop_func_start))
+      if (real_stop_pc != 0 && in_solib_dynsym_resolve_code (real_stop_pc))
 	{
 	  struct symtab_and_line sr_sal;
 	  init_sal (&sr_sal);
@@ -4070,11 +4070,7 @@ handle_command (char *args, int from_tty)
 
   /* Break the command line up into args. */
 
-  argv = buildargv (args);
-  if (argv == NULL)
-    {
-      nomem (0);
-    }
+  argv = gdb_buildargv (args);
   old_chain = make_cleanup_freeargv (argv);
 
   /* Walk through the args, looking for signal oursigs, signal names, and
@@ -4231,13 +4227,12 @@ xdb_handle_command (char *args, int from_tty)
   char **argv;
   struct cleanup *old_chain;
 
+  if (args == NULL)
+    error_no_arg (_("xdb command"));
+
   /* Break the command line up into args. */
 
-  argv = buildargv (args);
-  if (argv == NULL)
-    {
-      nomem (0);
-    }
+  argv = gdb_buildargv (args);
   old_chain = make_cleanup_freeargv (argv);
   if (argv[1] != (char *) NULL)
     {
