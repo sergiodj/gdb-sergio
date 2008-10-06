@@ -924,7 +924,8 @@ AC_CHECK_MEMBERS([struct reg.r_fs, struct reg.r_gs], [], [],
 # See if <sys/ptrace.h> provides the PTRACE_GETREGS request.
 AC_MSG_CHECKING(for PTRACE_GETREGS)
 AC_CACHE_VAL(gdb_cv_have_ptrace_getregs,
-[AC_TRY_COMPILE([#include <sys/ptrace.h>],
+[AC_TRY_COMPILE([#include <sys/ptrace.h>
+ #include <asm/ptrace.h>],
 		[PTRACE_GETREGS;],
 		[gdb_cv_have_ptrace_getregs=yes],
 		[gdb_cv_have_ptrace_getregs=no])])
@@ -934,10 +935,81 @@ if test $gdb_cv_have_ptrace_getregs = yes; then
   [Define if sys/ptrace.h defines the PTRACE_GETREGS request.])
 fi
 
+# See if <sys/ptrace.h> provides the PTRACE_SETREGS request.
+AC_MSG_CHECKING(for PTRACE_SETREGS)
+AC_CACHE_VAL(gdb_cv_have_ptrace_setregs,
+[AC_TRY_COMPILE([#include <sys/ptrace.h>
+ #include <asm/ptrace.h>],
+		[PTRACE_SETREGS;],
+		[gdb_cv_have_ptrace_setregs=yes],
+		[gdb_cv_have_ptrace_setregs=no])])
+AC_MSG_RESULT($gdb_cv_have_ptrace_setregs)
+if test $gdb_cv_have_ptrace_setregs = yes; then
+  AC_DEFINE(HAVE_PTRACE_SETREGS, 1, 
+  [Define if sys/ptrace.h defines the PTRACE_SETREGS request.])
+fi
+
+# See if <sys/ptrace.h> provides the PTRACE_GETREGS64 request.
+AC_MSG_CHECKING(for PTRACE_GETREGS64)
+AC_CACHE_VAL(gdb_cv_have_ptrace_getregs64,
+[AC_TRY_COMPILE([#include <sys/ptrace.h>
+ #include <asm/ptrace.h>],
+		[PTRACE_GETREGS64;],
+		[gdb_cv_have_ptrace_getregs64=yes],
+		[gdb_cv_have_ptrace_getregs64=no])])
+AC_MSG_RESULT($gdb_cv_have_ptrace_getregs64)
+if test $gdb_cv_have_ptrace_getregs64 = yes; then
+  AC_DEFINE(HAVE_PTRACE_GETREGS64, 1, 
+  [Define if sys/ptrace.h defines the PTRACE_GETREGS64 request.])
+fi
+
+# See if <sys/ptrace.h> provides the PTRACE_SETREGS64 request.
+AC_MSG_CHECKING(for PTRACE_SETREGS64)
+AC_CACHE_VAL(gdb_cv_have_ptrace_setregs64,
+[AC_TRY_COMPILE([#include <sys/ptrace.h>
+ #include <asm/ptrace.h>],
+		[PTRACE_SETREGS64;],
+		[gdb_cv_have_ptrace_setregs64=yes],
+		[gdb_cv_have_ptrace_setregs64=no])])
+AC_MSG_RESULT($gdb_cv_have_ptrace_setregs64)
+if test $gdb_cv_have_ptrace_setregs64 = yes; then
+  AC_DEFINE(HAVE_PTRACE_SETREGS64, 1, 
+  [Define if sys/ptrace.h defines the PTRACE_SETREGS64 request.])
+fi
+
+# See if <sys/ptrace.h> provides the PTRACE_GETFPREGS request.
+AC_MSG_CHECKING(for PTRACE_GETFPREGS)
+AC_CACHE_VAL(gdb_cv_have_ptrace_getfpregs,
+[AC_TRY_COMPILE([#include <sys/ptrace.h>
+ #include <asm/ptrace.h>],
+		[PTRACE_GETFPREGS;],
+		[gdb_cv_have_ptrace_getfpregs=yes],
+		[gdb_cv_have_ptrace_getfpregs=no])])
+AC_MSG_RESULT($gdb_cv_have_ptrace_getfpregs)
+if test $gdb_cv_have_ptrace_getfpregs = yes; then
+  AC_DEFINE(HAVE_PTRACE_GETFPREGS, 1, 
+  [Define if sys/ptrace.h defines the PTRACE_GETFPREGS request.])
+fi
+
+# See if <sys/ptrace.h> provides the PTRACE_SETFPREGS request.
+AC_MSG_CHECKING(for PTRACE_SETFPREGS)
+AC_CACHE_VAL(gdb_cv_have_ptrace_setfpregs,
+[AC_TRY_COMPILE([#include <sys/ptrace.h>
+ #include <asm/ptrace.h>],
+		[PTRACE_SETFPREGS;],
+		[gdb_cv_have_ptrace_setfpregs=yes],
+		[gdb_cv_have_ptrace_setfpregs=no])])
+AC_MSG_RESULT($gdb_cv_have_ptrace_setfpregs)
+if test $gdb_cv_have_ptrace_setfpregs = yes; then
+  AC_DEFINE(HAVE_PTRACE_SETFPREGS, 1, 
+  [Define if sys/ptrace.h defines the PTRACE_SETFPREGS request.])
+fi
+
 # See if <sys/ptrace.h> provides the PTRACE_GETFPXREGS request.
 AC_MSG_CHECKING(for PTRACE_GETFPXREGS)
 AC_CACHE_VAL(gdb_cv_have_ptrace_getfpxregs,
-[AC_TRY_COMPILE([#include <sys/ptrace.h>],
+[AC_TRY_COMPILE([#include <sys/ptrace.h>
+ #include <asm/ptrace.h>],
 		[PTRACE_GETFPXREGS;],
 		[gdb_cv_have_ptrace_getfpxregs=yes],
 		[gdb_cv_have_ptrace_getfpxregs=no])])
@@ -945,6 +1017,20 @@ AC_MSG_RESULT($gdb_cv_have_ptrace_getfpxregs)
 if test $gdb_cv_have_ptrace_getfpxregs = yes; then
   AC_DEFINE(HAVE_PTRACE_GETFPXREGS, 1,
   [Define if sys/ptrace.h defines the PTRACE_GETFPXREGS request.])
+fi
+
+# See if <sys/ptrace.h> provides the PTRACE_SETFPXREGS request.
+AC_MSG_CHECKING(for PTRACE_SETFPXREGS)
+AC_CACHE_VAL(gdb_cv_have_ptrace_setfpxregs,
+[AC_TRY_COMPILE([#include <sys/ptrace.h>
+ #include <asm/ptrace.h>],
+		[PTRACE_SETFPXREGS;],
+		[gdb_cv_have_ptrace_setfpxregs=yes],
+		[gdb_cv_have_ptrace_setfpxregs=no])])
+AC_MSG_RESULT($gdb_cv_have_ptrace_setfpxregs)
+if test $gdb_cv_have_ptrace_setfpxregs = yes; then
+  AC_DEFINE(HAVE_PTRACE_SETFPXREGS, 1,
+  [Define if sys/ptrace.h defines the PTRACE_SETFPXREGS request.])
 fi
 
 # See if <sys/ptrace.h> provides the PT_GETDBREGS request.
