@@ -1040,7 +1040,7 @@ store_gp_regs (const struct regcache *regcache, int tid, int regno)
       if (ptrace (PTRACE_GETREGS, tid, 0, (int) &gregset) < 0)
         perror_with_name (_("Couldn't get general-purpose registers."));
 
-      fill_gregset (regcache, (const gdb_gregset_t *) &gregset, regno);
+      fill_gregset (regcache, &gregset, regno);
 
       if (ptrace (PTRACE_SETREGS, tid, 0, (int) &gregset) < 0)
         perror_with_name (_("Couldn't get general-purpose registers."));
@@ -1054,7 +1054,7 @@ store_gp_regs (const struct regcache *regcache, int tid, int regno)
       if (ptrace (PTRACE_GETREGS64, tid, 0, (int) &gregset) < 0)
         perror_with_name (_("Couldn't get general-purpose registers."));
 
-      fill_gregset (regcache, (const gdb_gregset_t *) &gregset, regno);
+      fill_gregset (regcache, &gregset, regno);
 
       if (ptrace (PTRACE_SETREGS64, tid, 0, (int) &gregset) < 0)
         perror_with_name (_("Couldn't get general-purpose registers."));
