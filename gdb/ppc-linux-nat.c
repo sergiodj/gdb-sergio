@@ -602,7 +602,7 @@ fetch_gp_regs (struct regcache *regcache, int tid)
     {
 #ifdef HAVE_PTRACE_GETREGS
       /* PPC 32-bit.  */
-      if (ptrace (PTRACE_GETREGS, tid, 0, (int) &gregset) < 0)
+      if (ptrace (PTRACE_GETREGS, tid, 0, (void *) &gregset) < 0)
         perror_with_name (_("Couldn't get general-purpose registers."));
 
       supply_gregset (regcache, (const gdb_gregset_t *) &gregset);
@@ -613,7 +613,7 @@ fetch_gp_regs (struct regcache *regcache, int tid)
     {
 #ifdef HAVE_PTRACE_GETREGS64
       /* PPC 64-bit.  */
-      if (ptrace (PTRACE_GETREGS64, tid, 0, (int) &gregset) < 0)
+      if (ptrace (PTRACE_GETREGS64, tid, 0, (void *) &gregset) < 0)
         perror_with_name (_("Couldn't get general-purpose registers."));
 
       supply_gregset (regcache, (const gdb_gregset_t *) &gregset);
@@ -635,7 +635,7 @@ fetch_fp_regs (struct regcache *regcache, int tid)
 {
   gdb_fpregset_t fpregs;
 
-  if (ptrace (PTRACE_GETFPREGS, tid, 0, (int) &fpregs) < 0)
+  if (ptrace (PTRACE_GETFPREGS, tid, 0, (void *) &fpregs) < 0)
     perror_with_name (_("Couldn't get floating point status"));
 
   supply_fpregset (regcache, (const gdb_fpregset_t *) &fpregs);
@@ -1037,12 +1037,12 @@ store_gp_regs (const struct regcache *regcache, int tid, int regno)
     {
 #if defined(HAVE_PTRACE_SETREGS) && defined(HAVE_PTRACE_GETREGS)
       /* PPC 32-bit.  */
-      if (ptrace (PTRACE_GETREGS, tid, 0, (int) &gregset) < 0)
+      if (ptrace (PTRACE_GETREGS, tid, 0, (void *) &gregset) < 0)
         perror_with_name (_("Couldn't get general-purpose registers."));
 
       fill_gregset (regcache, &gregset, regno);
 
-      if (ptrace (PTRACE_SETREGS, tid, 0, (int) &gregset) < 0)
+      if (ptrace (PTRACE_SETREGS, tid, 0, (void *) &gregset) < 0)
         perror_with_name (_("Couldn't get general-purpose registers."));
       return;
 #endif /* HAVE_PTRACE_SETREGS && HAVE_PTRACE_GETREGS */
@@ -1051,12 +1051,12 @@ store_gp_regs (const struct regcache *regcache, int tid, int regno)
     {
 #if defined(HAVE_PTRACE_SETREGS64) && defined(HAVE_PTRACE_GETREGS64)
       /* PPC 64-bit.  */
-      if (ptrace (PTRACE_GETREGS64, tid, 0, (int) &gregset) < 0)
+      if (ptrace (PTRACE_GETREGS64, tid, 0, (void *) &gregset) < 0)
         perror_with_name (_("Couldn't get general-purpose registers."));
 
       fill_gregset (regcache, &gregset, regno);
 
-      if (ptrace (PTRACE_SETREGS64, tid, 0, (int) &gregset) < 0)
+      if (ptrace (PTRACE_SETREGS64, tid, 0, (void *) &gregset) < 0)
         perror_with_name (_("Couldn't get general-purpose registers."));
       return;
 #endif /* HAVE_PTRACE_SETREGS64 && HAVE_PTRACE_GETREGS64 */
@@ -1075,12 +1075,12 @@ store_fp_regs (const struct regcache *regcache, int tid, int regno)
 {
   gdb_fpregset_t fpregs;
 
-  if (ptrace (PTRACE_GETFPREGS, tid, 0, (int) &fpregs) < 0)
+  if (ptrace (PTRACE_GETFPREGS, tid, 0, (void *) &fpregs) < 0)
     perror_with_name (_("Couldn't get floating point status"));
 
   fill_fpregset (regcache, &fpregs, regno);
 
-  if (ptrace (PTRACE_SETFPREGS, tid, 0, (int) &fpregs) < 0)
+  if (ptrace (PTRACE_SETFPREGS, tid, 0, (void *) &fpregs) < 0)
     perror_with_name (_("Couldn't write floating point status"));
 }
 
