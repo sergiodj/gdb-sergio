@@ -1,3 +1,164 @@
+2008-10-10  Doug Evans  <dje@google.com>
+
+	* dwarf2read.c (comp_unit_head): Use unsigned int consistently
+	for dwarf section offsets and sizes.
+	(dwarf2_cu): Ditto.
+	(dwarf2_per_cu_data): Ditto.
+	(create_all_comp_units): Change offset to unsigned int.
+	(load_full_comp_unit,find_partial_die_in_comp_unit,find_partial_die,
+	dwarf2_find_containing_comp_unit,dwarf2_find_comp_unit): Ditto.
+
+	* dwarf2read.c (read_initial_length): Delete cu_header arg.
+	All callers updated.
+	(read_checked_initial_length_and_offset): New function.
+	(read_offset_1): New function.
+	(read_offset): Call it.
+	(dwarf_decode_line_header): Call read_checked_initial_length_and_offset
+	instead of read_initial_length.  Call read_offset_1 instead of
+	read_offset.
+
+	* dwarf2read.c (dwarf2_get_ref_die_offset): Remove unused arg `cu'.
+	All callers updated.
+
+	* dwarf2read.c (dwarf_attr_name): Unconditionally support all
+	DW_AT_MIPS_* except DW_AT_MIPS_fde which collides with
+	DW_AT_HP_block_index.
+
+2008-10-10  Pedro Alves  <pedro@codesourcery.com>
+
+	* remote.c (remote_start_remote): Always tell the stub if we're in
+	extended-remote.
+
+2008-10-09  Pedro Alves  <pedro@codesourcery.com>
+
+	* remote.c (remote_wait): Rename to...
+	(remote_wait_as): ... this.  Don't loop here.  If the remote
+	didn't stop, return TARGET_WAITKIND_IGNORE.
+	(remote_wait): New, reimplemented on top of remote_wait_as.
+
+2008-10-09  Thomas Schwinge  <tschwinge@gnu.org>
+
+	* Makefile.in (gnu-nat.o): Revert the 2008-09-10 change, as the problem
+	is fixed upstream.
+
+	* reply_mig_hack.awk: Use the `BAD_TYPECHECK' macro.
+
+	* MAINTAINERS (Write After Approval): Add myself.
+
+2008-10-09  Pedro Alves  <pedro@codesourcery.com>
+
+	Make it compile without warnings.
+
+	* procfs.c (create_procinfo): Initialize `parent'.
+	(dead_procinfo): Pass a constant string as format to error.
+	(procfs_address_to_host_pointer): Add cast to gdb_type *.
+	(procfs_find_LDT_entry): Adjust format string to long int
+	ptid.tid.
+	(procfs_xfer_partial): Adjust prototype.  Add gdb_byte* cast.
+	(procfs_xfer_memory): Adjust prototype.
+	(info_mappings_callback, info_proc_mappings): Adjust to not pass a
+	variable as printf_filtered format.
+	(procfs_make_note_section): Change type of auxv local to gdb_byte.
+	* Makefile.in: Remove special rule.
+
+2008-10-09  Pedro Alves  <pedro@codesourcery.com>
+	    Daniel Jacobowitz  <dan@codesourcery.com>
+
+	* remote.c (remote_open_1): Move acknowledging any pending ack,
+	querying supported features, activating noack mode, finding the
+	target description, enabling extended remote, and checking remote
+	symbols from here ...
+	(remote_start_remote): ... to here.
+	(remote_open_1): Don't pop the target if it is already gone.
+	* target.c (unpush_target): Check for the dummy target.
+
+2008-10-09  Pedro Alves  <pedro@codesourcery.com>
+
+	* ser-mingw.c: Include "command.h".
+	(pipe_windows_open): Declare locals at the beginning of the scope.
+
+2008-10-08  Pedro Alves  <pedro@codesourcery.com>
+
+	* remote.c (struct remote_state) <waiting_for_stop_reply>: New
+	field.
+	(remote_open_1): Clear waiting_for_stop_reply.
+	(remote_resume): Set waiting_for_stop_reply.
+	(remote_wait): Clear or set waiting_for_stop_reply accordingly.
+	(putpkt_binary): If we're in async mode and waiting for a stop
+	reply, bail out with an error.
+	(extended_remote_mourn_1): Clear waiting_for_stop_reply.
+
+2008-10-08  Pedro Alves  <pedro@codesourcery.com>
+
+	* remote.c (remote_get_thread_info): If the remote doesn't support
+	the query, bail out.
+
+2008-10-08  Jan Kratochvil  <jan.kratochvil@redhat.com>
+
+	Convert static_kind into loc_kind enum.
+	* gdbtypes.h (enum field_loc_kind): New.
+	(union field_location): New field dwarf_block.
+	(struct field): Rename static_kind as loc_kind.
+	(FIELD_STATIC_KIND): Rename to ...
+	(FIELD_LOC_KIND): ... here.
+	(TYPE_FIELD_STATIC_KIND): Rename to ...
+	(TYPE_FIELD_LOC_KIND): ... here and use there now new FIELD_LOC_KIND.
+	(TYPE_FIELD_STATIC_HAS_ADDR): Remove.
+	(TYPE_FIELD_STATIC): Remove.
+	(TYPE_FIELD_BITPOS): Reformat.
+	(SET_FIELD_BITPOS): New.
+	(FIELD_PHYSADDR): Rename to ...
+	(FIELD_STATIC_PHYSADDR): ... here.
+	(TYPE_FIELD_STATIC_PHYSADDR): Follow the FIELD_PHYSADDR rename.
+	(SET_FIELD_PHYSADDR): Use new FIELD_LOC_KIND.
+	(FIELD_PHYSNAME): Rename to ...
+	(FIELD_STATIC_PHYSNAME): ... here.
+	(TYPE_FIELD_STATIC_PHYSNAME): Follow the FIELD_PHYSNAME rename.
+	(SET_FIELD_PHYSNAME): Use new FIELD_LOC_KIND.
+	(FIELD_DWARF_BLOCK, TYPE_FIELD_DWARF_BLOCK, SET_FIELD_DWARF_BLOCK): New.
+	(field_is_static): New declaration.
+	* gdbtypes.c (field_is_static): New function.
+	(copy_type_recursive): Update throughout.
+	* amd64-tdep.c, c-typeprint.c, coffread.c, cp-valprint.c, dwarf2read.c,
+	eval.c, jv-typeprint.c, jv-valprint.c, mdebugread.c, p-typeprint.c,
+	p-valprint.c, valops.c, value.c, varobj.c: Update throughout.
+
+2008-10-07  Thomas Schwinge  <tschwinge@gnu.org>
+	    Pedro Alves  <pedro@codesourcery.com>
+
+	* gnu-nat.h: Rename `current_inferior' to `gnu_current_inf' to
+	avoid a name collision.
+	* gnu-nat.c: Likewise.
+	* i386gnu-nat.c: Likewise.
+
+2008-10-07  Joel Brobecker  <brobecker@adacore.com>
+
+	* ada-lang.c (ada_evaluate_subexp) [OP_ATR_SIZE]: Add handling
+	of arguments that are references.
+
+2008-10-06  Doug Evans  <dje@google.com>
+
+	* dwarf2read.c (dwarf2_die_debug): New static global.
+	(dump_die_shallow): Renamed from dump_die, New args f, indent.
+	Print to specified file, indented by the specified amount.
+	(dump_die_for_error): New fn.  Point all existing callers of
+	dump_die here.
+	(dump_die_die_1,dump_die): New fns, replaces ...
+	(dump_die_list): ... deleted.
+	(read_die_and_children_1): Old contents of read_die_and_children
+	moved here.
+	(read_die_and_children): Rewrite.
+	(read_die_and_siblings): Call read_die_and_children_1 instead of
+	read_die_and_children.
+	(_initialize_dwarf2_read): New option "debug dwarf2-die".
+	* gdbinit.in (pdie): New macro.
+
+	* dwarf2read.c (offset_in_cu_p): New function.
+	(find_partial_die,follow_die_ref): Use it.
+
+	* symmisc.c (maintenance_info_symtabs): Watch for ^c.
+	(maintenance_info_psymtabs): Ditto.
+
 2008-10-05  Michael Snyder  <msnyder@vmware.com>
 
 	* infrun.c (handle_inferior_event): Fix typo in comment.

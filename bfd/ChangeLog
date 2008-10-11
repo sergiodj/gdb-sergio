@@ -1,3 +1,29 @@
+2008-10-10  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* elf32-ppc.c (ppc_elf_merge_obj_attributes): Merge
+	Tag_GNU_Power_ABI_Struct_Return.
+
+2008-10-09  Kai Tietz  <kai.tietz@onevision.com>
+
+	* cofflink.c (_bfd_coff_generic_relocate_section): Dump bfd_vma sized addresses instead of long sized.
+
+2008-10-09  Alan Modra  <amodra@bigpond.net.au>
+
+	* elf64-ppc.c (ppc64_elf_get_synthetic_symtab): Don't attempt to
+	read plt relocs if no dynamic syms.
+
+2008-10-08  Nick Clifton  <nickc@redhat.com>
+
+	* configure.in (ALL_LINGUAS): Add "id".
+	* configure: Regenerate.
+	* po/id.po: New Indonesian translation.
+
+2008-10-08  Alan Modra  <amodra@bigpond.net.au>
+
+	* elf.c (assign_file_positions_for_load_sections): When checking
+	a segment for contents, don't assume that a non-TLS nobits section
+	must only be followed by nobits sections.
+
 2008-10-04  Hans-Peter Nilsson  <hp@axis.com>
 
 	* elf32-cris.c (TLSHOWTO32, TLSHOWTO16): New macros.
