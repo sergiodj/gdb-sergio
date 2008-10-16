@@ -1,3 +1,20 @@
+2008-10-16  Paul Pluzhnikov  <ppluzhnikov@google.com>
+
+	* Makefile.in: Add gdb.python to ALL_SUBDIRS.
+
+2008-10-16  Thiago Jung Bauermann  <bauerman@br.ibm.com>
+
+	* gdb.python/python-value.c: New file.
+	* gdb.python/python-value.exp: New file.
+
+2008-10-15  Pedro Alves  <pedro@codesourcery.com>
+
+	* gdb.mi/mi-nsmoribund.exp, gdb.mi/nsmoribund.c: New test.
+
+2008-10-15  Denis Pilat  <denis.pilat@st.com>
+
+	* gdb.cp/mb-ctor.exp: Fix a typo.
+
 2008-10-09  Tom Tromey  <tromey@redhat.com>
 
 	* gdb.base/macscp.exp: Use 'vafunc' and 'fixedarg' rather than

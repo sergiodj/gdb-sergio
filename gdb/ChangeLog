@@ -1,3 +1,60 @@
+2008-10-16  Pedro Alves  <pedro@codesourcery.com>
+
+	* remote.c (set_general_process): New.
+	(remote_check_symbols): Use it.
+
+2008-10-16  Pedro Alves  <pedro@codesourcery.com>
+
+	* remote.c (push_remote_target): Delete.
+	* target.h (push_remote_target): Delete declaration.
+
+2008-10-15  Pedro Alves  <pedro@codesourcery.com>
+
+	* remote.c (remote_close): Unregister remote_desc from the event
+	loop.  Always restore the SIGINT handler.  Discard all inferiors
+	here.
+	(remote_detach_1, remote_disconnect): Don't unregister the file
+	descriptor from the event loop here.
+	(interrupt_query, readchar, getpkt_sane): Pop the target instead
+	of morning the current inferior.
+	(remote_kill): Don't unregister the file descriptor from the event
+	loop here.
+	(remote_mourn_1): Don't discard inferiors here.
+
+2008-10-15  Pedro Alves  <pedro@codesourcery.com>
+
+	* breakpoint.c (breakpoint_init_inferior): Clean up the moribund
+	locations list.
+	(moribund_breakpoint_here_p): Record the moribund
+	location in the moribund_locations vector.
+	* breakpoint.h (moribund_breakpoint_here_p): Declare.
+	(displaced_step_fixup): Check if the breakpoint the thread was
+	trying to step over has been removed since having been placed in
+	the displaced stepping queue.
+	(adjust_pc_after_break): In non-stop mode, check for a moribund
+	breakpoint at the stop pc.
+	(handle_inferior_event): Don't retire moribund breakpoints on
+	TARGET_WAITKIND_IGNORE.
+
+2008-10-15  Pedro Alves  <pedro@codesourcery.com>
+
+	* infrun.c (displaced_step_prepare): Switch thread temporarily
+	while we're here.
+	(displaced_step_fixup): Make sure target_resume sees ptid as
+	inferior_ptid.  Add debug output.
+
+2008-10-14  Pedro Alves  <pedro@codesourcery.com>
+
+	Remove dead code.
+
+	* breakpoint.c (show_breakpoint_hit_counts): Delete.
+	(print_one_breakpoint_location): Adjust.
+	(breakpoint_clear_ignore_counts): Delete.
+	* breakpoint.h (breakpoint_clear_ignore_counts): Remove
+	declaration.
+	* target.c (generic_mourn_inferior): Don't clear ignore
+	counts (never reached).
+
 2008-10-10  Doug Evans  <dje@google.com>
 
 	* dwarf2read.c (comp_unit_head): Use unsigned int consistently

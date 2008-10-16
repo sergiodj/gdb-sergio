@@ -1246,6 +1246,30 @@ set_continue_thread (struct ptid ptid)
   set_thread (ptid, 0);
 }
 
+/* Change the remote current process.  Which thread within the process
+   ends up selected isn't important, as long as it is the same process
+   as what INFERIOR_PTID points to.
+
+   This comes from that fact that there is no explicit notion of
+   "selected process" in the protocol.  The selected process for
+   general operations is the process the selected general thread
+   belongs to.  */
+
+static void
+set_general_process (void)
+{
+  struct remote_state *rs = get_remote_state ();
+
+  /* If the remote can't handle multiple processes, don't bother.  */
+  if (!remote_multi_process_p (rs))
+    return;
+
+  /* We only need to change the remote current thread if it's pointing
+     at some other process.  */
+  if (ptid_get_pid (general_thread) != ptid_get_pid (inferior_ptid))
+    set_general_thread (inferior_ptid);
+}
+
 
 /*  Return nonzero if the thread PTID is still alive on the remote
     system.  */
@@ -2202,8 +2226,23 @@ static void
 remote_close (int quitting)
 {
   if (remote_desc)
-    serial_close (remote_desc);
-  remote_desc = NULL;
+    {
+      /* Unregister the file descriptor from the event loop.  */
+      if (target_is_async_p ())
+	target_async (NULL, 0);
+      serial_close (remote_desc);
+      remote_desc = NULL;
+    }
+
+  /* Make sure we don't leave the async SIGINT signal handler
+     installed.  */
+  signal (SIGINT, handle_sigint);
+
+  /* We don't have a connection to the remote stub anymore.  Get rid
+     of all the inferiors and their threads we were controlling.  */
+  discard_all_inferiors ();
+
+  generic_mourn_inferior ();
 }
 
 /* Query the remote side for the text, data and bss offsets.  */
@@ -2537,6 +2576,9 @@ remote_check_symbols (struct objfile *objfile)
 
   if (remote_protocol_packets[PACKET_qSymbol].support == PACKET_DISABLE)
     return;
+
+  /* Make sure the remote is pointing at the right process.  */
+  set_general_process ();
 
   /* Allocate a message buffer.  We can't reuse the input buffer in RS,
      because we need both at the same time.  */
@@ -3029,10 +3071,6 @@ remote_detach_1 (char *args, int from_tty, int extended)
   else
     error (_("Can't detach process."));
 
-  /* Unregister the file descriptor from the event loop.  */
-  if (target_is_async_p ())
-    serial_async (remote_desc, NULL, 0);
-
   if (from_tty)
     {
       if (remote_multi_process_p (rs))
@@ -3070,10 +3108,6 @@ remote_disconnect (struct target_ops *target, char *args, int from_tty)
 {
   if (args)
     error (_("Argument given to \"disconnect\" when remotely debugging."));
-
-  /* Unregister the file descriptor from the event loop.  */
-  if (target_is_async_p ())
-    serial_async (remote_desc, NULL, 0);
 
   /* Make sure we unpush even the extended remote targets; mourn
      won't do it.  So call remote_mourn_1 directly instead of
@@ -3546,8 +3580,7 @@ interrupt_query (void)
   if (query ("Interrupted while waiting for the program.\n\
 Give up (and stop debugging it)? "))
     {
-      target_mourn_inferior ();
-      signal (SIGINT, handle_sigint);
+      pop_target ();
       deprecated_throw_reason (RETURN_QUIT);
     }
 
@@ -4954,7 +4987,7 @@ readchar (int timeout)
   switch ((enum serial_rc) ch)
     {
     case SERIAL_EOF:
-      target_mourn_inferior ();
+      pop_target ();
       error (_("Remote connection closed"));
       /* no return */
     case SERIAL_ERROR:
@@ -5387,7 +5420,7 @@ getpkt_sane (char **buf, long *sizeof_buf, int forever)
 	      if (forever)	/* Watchdog went off?  Kill the target.  */
 		{
 		  QUIT;
-		  target_mourn_inferior ();
+		  pop_target ();
 		  error (_("Watchdog timeout has expired.  Target detached."));
 		}
 	      if (remote_debug)
@@ -5437,10 +5470,6 @@ getpkt_sane (char **buf, long *sizeof_buf, int forever)
 static void
 remote_kill (void)
 {
-  /* Unregister the file descriptor from the event loop.  */
-  if (target_is_async_p ())
-    serial_async (remote_desc, NULL, 0);
-
   /* Use catch_errors so the user can quit from gdb even when we
      aren't on speaking terms with the remote system.  */
   catch_errors ((catch_errors_ftype *) putpkt, "k", "", RETURN_MASK_ERROR);
@@ -5512,12 +5541,9 @@ remote_mourn (void)
 static void
 remote_mourn_1 (struct target_ops *target)
 {
-  /* Get rid of all the inferiors and their threads we were
-     controlling.  */
-  discard_all_inferiors ();
-
   unpush_target (target);
-  generic_mourn_inferior ();
+
+  /* remote_close takes care of cleaning up.  */
 }
 
 static int
@@ -5994,23 +6020,6 @@ remote_remove_hw_breakpoint (struct bp_target_info *bp_tgt)
     }
   internal_error (__FILE__, __LINE__,
 		  _("remote_remove_hw_breakpoint: reached end of function"));
-}
-
-/* Some targets are only capable of doing downloads, and afterwards
-   they switch to the remote serial protocol.  This function provides
-   a clean way to get from the download target to the remote target.
-   It's basically just a wrapper so that we don't have to expose any
-   of the internal workings of remote.c.
-
-   Prior to calling this routine, you should shutdown the current
-   target code, else you will get the "A program is being debugged
-   already..." message.  Usually a call to pop_target() suffices.  */
-
-void
-push_remote_target (char *name, int from_tty)
-{
-  printf_filtered (_("Switching to remote protocol\n"));
-  remote_open (name, from_tty);
 }
 
 /* Table used by the crc32 function to calcuate the checksum.  */

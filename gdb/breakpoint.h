@@ -713,6 +713,8 @@ enum breakpoint_here
 
 extern enum breakpoint_here breakpoint_here_p (CORE_ADDR);
 
+extern int moribund_breakpoint_here_p (CORE_ADDR);
+
 extern int breakpoint_inserted_here_p (CORE_ADDR);
 
 extern int regular_breakpoint_inserted_here_p (CORE_ADDR);
@@ -744,8 +746,6 @@ extern struct cleanup *make_cleanup_delete_breakpoint (struct breakpoint *);
 extern void delete_breakpoint (struct breakpoint *);
 
 extern void breakpoint_auto_delete (bpstat);
-
-extern void breakpoint_clear_ignore_counts (void);
 
 extern void break_command (char *, int);
 

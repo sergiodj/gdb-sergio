@@ -629,7 +629,7 @@ displaced_step_dump_bytes (struct ui_file *file,
 static int
 displaced_step_prepare (ptid_t ptid)
 {
-  struct cleanup *old_cleanups;
+  struct cleanup *old_cleanups, *ignore_cleanups;
   struct regcache *regcache = get_thread_regcache (ptid);
   struct gdbarch *gdbarch = get_regcache_arch (regcache);
   CORE_ADDR original, copy;
@@ -681,6 +681,9 @@ displaced_step_prepare (ptid_t ptid)
 
   displaced_step_clear ();
 
+  old_cleanups = save_inferior_ptid ();
+  inferior_ptid = ptid;
+
   original = regcache_read_pc (regcache);
 
   copy = gdbarch_displaced_step_location (gdbarch);
@@ -688,8 +691,8 @@ displaced_step_prepare (ptid_t ptid)
 
   /* Save the original contents of the copy area.  */
   displaced_step_saved_copy = xmalloc (len);
-  old_cleanups = make_cleanup (free_current_contents,
-                               &displaced_step_saved_copy);
+  ignore_cleanups = make_cleanup (free_current_contents,
+				  &displaced_step_saved_copy);
   read_memory (copy, displaced_step_saved_copy, len);
   if (debug_displaced)
     {
@@ -699,7 +702,7 @@ displaced_step_prepare (ptid_t ptid)
     };
 
   closure = gdbarch_displaced_step_copy_insn (gdbarch,
-                                              original, copy, regcache);
+					      original, copy, regcache);
 
   /* We don't support the fully-simulated case at present.  */
   gdb_assert (closure);
@@ -709,11 +712,13 @@ displaced_step_prepare (ptid_t ptid)
   /* Resume execution at the copy.  */
   regcache_write_pc (regcache, copy);
 
-  discard_cleanups (old_cleanups);
+  discard_cleanups (ignore_cleanups);
+
+  do_cleanups (old_cleanups);
 
   if (debug_displaced)
     fprintf_unfiltered (gdb_stdlog, "displaced: displaced pc to 0x%s\n",
-                        paddr_nz (copy));
+			paddr_nz (copy));
 
   /* Save the information we need to fix things up if the step
      succeeds.  */
@@ -784,27 +789,71 @@ displaced_step_fixup (ptid_t event_ptid, enum target_signal signal)
 
   do_cleanups (old_cleanups);
 
+  displaced_step_ptid = null_ptid;
+
   /* Are there any pending displaced stepping requests?  If so, run
      one now.  */
-  if (displaced_step_request_queue)
+  while (displaced_step_request_queue)
     {
       struct displaced_step_request *head;
       ptid_t ptid;
+      CORE_ADDR actual_pc;
 
       head = displaced_step_request_queue;
       ptid = head->ptid;
       displaced_step_request_queue = head->next;
       xfree (head);
 
-      if (debug_displaced)
-	fprintf_unfiltered (gdb_stdlog,
-			    "displaced: stepping queued %s now\n",
-			    target_pid_to_str (ptid));
+      context_switch (ptid);
 
+      actual_pc = read_pc ();
 
-      displaced_step_ptid = null_ptid;
-      displaced_step_prepare (ptid);
-      target_resume (ptid, 1, TARGET_SIGNAL_0);
+      if (breakpoint_here_p (actual_pc))
+	{
+	  if (debug_displaced)
+	    fprintf_unfiltered (gdb_stdlog,
+				"displaced: stepping queued %s now\n",
+				target_pid_to_str (ptid));
+
+	  displaced_step_prepare (ptid);
+
+	  if (debug_displaced)
+	    {
+	      gdb_byte buf[4];
+
+	      fprintf_unfiltered (gdb_stdlog, "displaced: run 0x%s: ",
+				  paddr_nz (actual_pc));
+	      read_memory (actual_pc, buf, sizeof (buf));
+	      displaced_step_dump_bytes (gdb_stdlog, buf, sizeof (buf));
+	    }
+
+	  target_resume (ptid, 1, TARGET_SIGNAL_0);
+
+	  /* Done, we're stepping a thread.  */
+	  break;
+	}
+      else
+	{
+	  int step;
+	  struct thread_info *tp = inferior_thread ();
+
+	  /* The breakpoint we were sitting under has since been
+	     removed.  */
+	  tp->trap_expected = 0;
+
+	  /* Go back to what we were trying to do.  */
+	  step = currently_stepping (tp);
+
+	  if (debug_displaced)
+	    fprintf_unfiltered (gdb_stdlog, "breakpoint is gone %s: step(%d)\n",
+				target_pid_to_str (tp->ptid), step);
+
+	  target_resume (ptid, step, TARGET_SIGNAL_0);
+	  tp->stop_signal = TARGET_SIGNAL_0;
+
+	  /* This request was discarded.  See if there's any other
+	     thread waiting for its turn.  */
+	}
     }
 }
 
@@ -1785,9 +1834,16 @@ adjust_pc_after_break (struct execution_control_state *ecs)
   breakpoint_pc = regcache_read_pc (regcache)
 		  - gdbarch_decr_pc_after_break (gdbarch);
 
-  /* Check whether there actually is a software breakpoint inserted
-     at that location.  */
-  if (software_breakpoint_inserted_here_p (breakpoint_pc))
+  /* Check whether there actually is a software breakpoint inserted at
+     that location.
+
+     If in non-stop mode, a race condition is possible where we've
+     removed a breakpoint, but stop events for that breakpoint were
+     already queued and arrive later.  To suppress those spurious
+     SIGTRAPs, we keep a list of such breakpoint locations for a bit,
+     and retire them after a number of stop events are reported.  */
+  if (software_breakpoint_inserted_here_p (breakpoint_pc)
+      || (non_stop && moribund_breakpoint_here_p (breakpoint_pc)))
     {
       /* When using hardware single-step, a SIGTRAP is reported for both
 	 a completed single-step and a software breakpoint.  Need to
@@ -1904,8 +1960,6 @@ handle_inferior_event (struct execution_control_state *ecs)
   else
     stop_soon = NO_STOP_QUIETLY;
 
-  breakpoint_retire_moribund ();
-
   /* Cache the last pid/waitstatus. */
   target_last_wait_ptid = ecs->ptid;
   target_last_waitstatus = ecs->ws;
@@ -1933,6 +1987,8 @@ handle_inferior_event (struct execution_control_state *ecs)
 
   if (ecs->ws.kind != TARGET_WAITKIND_IGNORE)
     {
+      breakpoint_retire_moribund ();
+
       /* Mark the non-executing threads accordingly.  */
       if (!non_stop
  	  || ecs->ws.kind == TARGET_WAITKIND_EXITED

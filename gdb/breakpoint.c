@@ -315,10 +315,6 @@ static int overlay_events_enabled;
 	     B ? (TMP=B->global_next, 1): 0;	\
 	     B = TMP)
 
-/* True if breakpoint hit counts should be displayed in breakpoint info.  */
-
-int show_breakpoint_hit_counts = 1;
-
 /* Chains of all breakpoints defined.  */
 
 struct breakpoint *breakpoint_chain;
@@ -1767,6 +1763,7 @@ breakpoint_init_inferior (enum inf_context context)
 {
   struct breakpoint *b, *temp;
   struct bp_location *bpt;
+  int ix;
 
   ALL_BP_LOCATIONS (bpt)
     if (bpt->owner->enable_state != bp_permanent)
@@ -1809,6 +1806,11 @@ breakpoint_init_inferior (enum inf_context context)
 	break;
       }
   }
+
+  /* Get rid of the moribund locations.  */
+  for (ix = 0; VEC_iterate (bp_location_p, moribund_locations, ix, bpt); ++ix)
+    free_bp_location (bpt);
+  VEC_free (bp_location_p, moribund_locations);
 }
 
 /* breakpoint_here_p (PC) returns non-zero if an enabled breakpoint
@@ -1851,6 +1853,20 @@ breakpoint_here_p (CORE_ADDR pc)
   return any_breakpoint_here ? ordinary_breakpoint_here : 0;
 }
 
+/* Return true if there's a moribund breakpoint at PC.  */
+
+int
+moribund_breakpoint_here_p (CORE_ADDR pc)
+{
+  struct bp_location *loc;
+  int ix;
+
+  for (ix = 0; VEC_iterate (bp_location_p, moribund_locations, ix, loc); ++ix)
+    if (loc->address == pc)
+      return 1;
+
+  return 0;
+}
 
 /* Returns non-zero if there's a breakpoint inserted at PC, which is
    inserted using regular breakpoint_chain/bp_location_chain mechanism.
@@ -3913,7 +3929,7 @@ print_one_breakpoint_location (struct breakpoint *b,
       ui_out_text (uiout, "\n");
     }
   
-  if (!part_of_multiple && show_breakpoint_hit_counts && b->hit_count)
+  if (!part_of_multiple && b->hit_count)
     {
       /* FIXME should make an annotation for this */
       if (ep_is_catchpoint (b))
@@ -3931,7 +3947,7 @@ print_one_breakpoint_location (struct breakpoint *b,
   /* Output the count also if it is zero, but only if this is
      mi. FIXME: Should have a better test for this. */
   if (ui_out_is_mi_like_p (uiout))
-    if (!part_of_multiple && show_breakpoint_hit_counts && b->hit_count == 0)
+    if (!part_of_multiple && b->hit_count == 0)
       ui_out_field_int (uiout, "times", b->hit_count);
 
   if (!part_of_multiple && b->ignore_count)
@@ -7311,8 +7327,8 @@ update_global_location_list (int should_insert)
 	}
 
       if (!found_object)
-	{	      
-	  if (removed)
+	{
+	  if (removed && non_stop)
 	    {
 	      /* This location was removed from the targets.  In non-stop mode,
 		 a race condition is possible where we've removed a breakpoint,
@@ -7320,20 +7336,22 @@ update_global_location_list (int should_insert)
 		 arrive later.  To suppress spurious SIGTRAPs reported to user,
 		 we keep this breakpoint location for a bit, and will retire it
 		 after we see 3 * thread_count events.
-		 The theory here is that reporting of events should, 
+		 The theory here is that reporting of events should,
 		 "on the average", be fair, so after that many event we'll see
 		 events from all threads that have anything of interest, and no
-		 longer need to keep this breakpoint.  This is just a 
+		 longer need to keep this breakpoint.  This is just a
 		 heuristic, but if it's wrong, we'll report unexpected SIGTRAP,
-		 which is usability issue, but not a correctness problem.  */	  
+		 which is usability issue, but not a correctness problem.  */
 	      loc->events_till_retirement = 3 * (thread_count () + 1);
 	      loc->owner = NULL;
-	    }
 
-	  free_bp_location (loc);
+	      VEC_safe_push (bp_location_p, moribund_locations, loc);
+	    }
+	  else
+	    free_bp_location (loc);
 	}
     }
-    
+
   ALL_BREAKPOINTS (b)
     {
       check_duplicates (b);
@@ -7935,16 +7953,6 @@ set_ignore_count (int bptnum, int count, int from_tty)
     }
 
   error (_("No breakpoint number %d."), bptnum);
-}
-
-/* Clear the ignore counts of all breakpoints.  */
-void
-breakpoint_clear_ignore_counts (void)
-{
-  struct breakpoint *b;
-
-  ALL_BREAKPOINTS (b)
-    b->ignore_count = 0;
 }
 
 /* Command to set ignore-count of breakpoint N to COUNT.  */
