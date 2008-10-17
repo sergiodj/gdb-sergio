@@ -1440,7 +1440,7 @@ init_wait_for_inferior (void)
 
   breakpoint_init_inferior (inf_starting);
 
-  /* The first resume is not following a fork/vfork/exec/syscall. */
+  /* The first resume is not following a fork/vfork/exec/syscall.  */
   pending_follow.kind = TARGET_WAITKIND_SPURIOUS;	/* I.e., none. */
 
   clear_proceed_status ();
@@ -1895,7 +1895,7 @@ ensure_not_running (void)
 /* Auxiliary function that handles syscall entry/return events.
    It returns 1 if the inferior should keep going (and GDB
    should ignore the event), or 0 if the event deserves to be
-   processed. */
+   processed.  */
 static int
 deal_with_syscall_event (struct execution_control_state *ecs)
 {
@@ -3062,7 +3062,7 @@ infrun: BPSTAT_WHAT_SET_LONGJMP_RESUME (!gdbarch_get_longjmp_target)\n");
       case BPSTAT_WHAT_ENTRY_BREAKPOINT:
         /* We hit the AT_ENTRY breakpoint, and now we have to enable
            the PTRACE_O_TRACESYSGOOD option in the inferior *if* we
-           are catching syscalls. */
+           are catching syscalls.  */
         if (debug_infrun)
           fprintf_unfiltered (gdb_stdlog, "infrun: BPSTAT_WHAT_ENTRY_BREAKPOINT\n");
         target_enable_tracesysgood (ecs->ptid);

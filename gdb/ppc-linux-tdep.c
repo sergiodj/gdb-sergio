@@ -161,24 +161,24 @@ static const char *syscalls_names64[] = {
     "rt_sigaction", "rt_sigprocmask", "rt_sigpending", "rt_sigtimedwait",
     "rt_sigqueueinfo", "rt_sigsuspend", "pread64", "pwrite64", "chown",
     "getcwd", "capget", "capset", "sigaltstack", "sendfile", "getpmsg",
-    "putpmsg", "vfork", "ugetrlimit", "readahead", "", "", "", "", "", "",
-    "pciconfig_read", "pciconfig_write", "pciconfig_iobase", "multiplexer",
-    "getdents64", "pivot_root", "", "madvise", "mincore", "gettid", "tkill",
-    "setxattr", "lsetxattr", "fsetxattr", "getxattr", "lgetxattr", "fgetxattr",
-    "listxattr", "llistxattr", "flistxattr", "removexattr", "lremovexattr",
-    "fremovexattr", "futex", "sched_setaffinity", "sched_getaffinity",
-    "", "tuxcall", "", "io_setup", "io_destroy", "io_getevents", "io_submit",
-    "io_cancel", "set_tid_address", "fadvise64", "exit_group", "lookup_dcookie",
-    "epoll_create", "epoll_ctl", "epoll_wait", "remap_file_pages",
-    "timer_create", "timer_settime", "timer_gettime", "timer_getoverrun",
-    "timer_delete", "clock_settime", "clock_gettime", "clock_getres",
-    "clock_nanosleep", "swapcontext", "tgkill", "utimes", "statfs64",
-    "fstatfs64", "", "rtas", "sys_debug_setcontext", "", "", "mbind",
-    "get_mempolicy", "set_mempolicy", "mq_open", "mq_unlink", "mq_timedsend",
-    "mq_timedreceive", "mq_notify", "mq_getsetattr", "kexec_load", "add_key",
-    "request_key", "keyctl", "waitid", "ioprio_set", "ioprio_get",
-    "inotify_init", "inotify_add_watch", "inotify_rm_watch", "spu_run",
-    "spu_create", "pselect6", "ppoll", "unshare", "", "", "",
+    "putpmsg", "vfork", "ugetrlimit", "readahead", "", "", "", "", 
+    "", "", "pciconfig_read", "pciconfig_write", "pciconfig_iobase",
+    "multiplexer", "getdents64", "pivot_root", "", "madvise", "mincore",
+    "gettid", "tkill", "setxattr", "lsetxattr", "fsetxattr", "getxattr",
+    "lgetxattr", "fgetxattr", "listxattr", "llistxattr", "flistxattr",
+    "removexattr", "lremovexattr", "fremovexattr", "futex", "sched_setaffinity",
+    "sched_getaffinity", "", "tuxcall", "", "io_setup", "io_destroy",
+    "io_getevents", "io_submit", "io_cancel", "set_tid_address", "fadvise64",
+    "exit_group", "lookup_dcookie", "epoll_create", "epoll_ctl", "epoll_wait",
+    "remap_file_pages", "timer_create", "timer_settime", "timer_gettime",
+    "timer_getoverrun", "timer_delete", "clock_settime", "clock_gettime",
+    "clock_getres", "clock_nanosleep", "swapcontext", "tgkill", "utimes",
+    "statfs64", "fstatfs64", "", "rtas", "sys_debug_setcontext", "",
+    "", "mbind", "get_mempolicy", "set_mempolicy", "mq_open", "mq_unlink",
+    "mq_timedsend", "mq_timedreceive", "mq_notify", "mq_getsetattr",
+    "kexec_load", "add_key", "request_key", "keyctl", "waitid", "ioprio_set",
+    "ioprio_get", "inotify_init", "inotify_add_watch", "inotify_rm_watch",
+    "spu_run", "spu_create", "pselect6", "ppoll", "unshare", "", "", "",
     "openat", "mkdirat", "mknodat", "fchownat", "futimesat", "newfstatat",
     "unlinkat", "renameat", "linkat", "symlinkat", "readlinkat",
     "fchmodat", "faccessat", "", ""
@@ -1140,7 +1140,7 @@ ppc_linux_trap_reg_p (struct gdbarch *gdbarch)
 }
 
 /* Return the current system call's number present in the
-   r0 register. When the function fails, it returns -1. */
+   r0 register.  When the function fails, it returns -1.  */
 LONGEST
 ppc_linux_get_syscall_number (struct gdbarch *gdbarch,
                               ptid_t ptid)
@@ -1159,7 +1159,7 @@ ppc_linux_get_syscall_number (struct gdbarch *gdbarch,
 
   /* Getting the system call number from the register.
      When dealing with PowerPC architecture, this information
-     is stored at 0th register. */
+     is stored at 0th register.  */
   regcache_cooked_read (regcache, tdep->ppc_gp0_regnum, buf);
 
   ret = extract_signed_integer (buf, tdep->wordsize);

@@ -50,7 +50,7 @@ proc check_init_info_breakpoints {} {
     # Verifying that the catchpoint appears in the 'info breakpoints'
     # command, but with "<unknown syscall>".
     set thistest "catch syscall appears in 'info breakpoints'"
-    gdb_test "info breakpoints" ".*catch syscall.*keep y.*syscall \"<unknown syscall>\".*" $thistest
+    gdb_test "info breakpoints" ".*catchpoint.*keep y.*syscall \"<unknown syscall>\".*" $thistest
 }
 
 # This procedure checks if, after a syscall catchpoint is hit, the
@@ -59,7 +59,7 @@ proc check_info_breakpoints { syscall_name } {
     global gdb_prompt
 
     set thistest "syscall '$syscall_name' appears in 'info breakpoints'"
-    gdb_test "info breakpoints" ".*catch syscall.*keep y.*syscall \"$syscall_name\".*" $thistest
+    gdb_test "info breakpoints" ".*catchpoint.*keep y.*syscall \"$syscall_name\".*" $thistest
 }
 
 # This procedure checks if there was a call to a syscall.
@@ -92,7 +92,7 @@ proc check_continue { syscall_name } {
     global gdb_prompt
 
     # Testing if the 'continue' stops at the
-    # specified syscall_name. If it does, then it should
+    # specified syscall_name.  If it does, then it should
     # first print that the infeior has called the syscall,
     # and after print that the syscall has returned.
 
@@ -130,7 +130,7 @@ proc test_catch_syscall_without_args {} {
     set all_syscalls { "close" "chroot" }
     # The last syscall (exit()) does not return, so
     # we cannot expect the catchpoint to be triggered
-    # twice. It is a special case.
+    # twice.  It is a special case.
     set last_syscall "exit_group"
 
     # Trying to set the syscall
@@ -176,7 +176,7 @@ proc test_catch_syscall_with_wrong_args {} {
 
     # Now, we must verify if the program stops with a continue.
     # If it doesn't, everything is right (since we don't have
-    # a syscall named "mlock" in it). Otherwise, this is a failure.
+    # a syscall named "mlock" in it).  Otherwise, this is a failure.
     set thistest "catch syscall with unused syscall ($syscall_name)"
     gdb_test "continue" "Program exited normally.*" $thistest
 }

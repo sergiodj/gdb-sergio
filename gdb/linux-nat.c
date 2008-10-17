@@ -284,7 +284,7 @@ static int linux_supports_tracesysgood_flag = -1;
 static int linux_supports_tracevforkdone_flag = -1;
 
 /* If the inferior have passed through its entrypoint (AT_ENTRY),
-   then this flag is set to 1. Otherwise, its value is 0. */
+   then this flag is set to 1.  Otherwise, its value is 0.  */
 static int linux_passed_by_entrypoint_flag = 0;
 
 /* Async mode support */
@@ -293,7 +293,7 @@ static int linux_passed_by_entrypoint_flag = 0;
    linux_nat_wait should behave as if async mode was off.  */
 static int linux_nat_async_mask_value = 1;
 
-/* Stores the current used ptrace() options. */
+/* Stores the current used ptrace() options.  */
 static int current_ptrace_options = 0;
 
 /* The read/write ends of the pipe registered as waitable file in the
@@ -627,9 +627,9 @@ linux_test_for_tracefork (int original_pid)
 
 /* Determine if PTRACE_O_TRACESYSGOOD can be used to follow syscalls.
 
-   We try to enable syscall tracing on ORIGINAL_PID. If this fails,
-   we know that the feature is not available. This may change the tracing
-   options for ORIGINAL_PID, but we'll be setting them shortly anyway. */
+   We try to enable syscall tracing on ORIGINAL_PID.  If this fails,
+   we know that the feature is not available.  This may change the tracing
+   options for ORIGINAL_PID, but we'll be setting them shortly anyway.  */
 
 static void
 linux_test_for_tracesysgood (int original_pid)
@@ -650,7 +650,7 @@ linux_test_for_tracesysgood (int original_pid)
 }
 
 /* Determine wether we support PTRACE_O_TRACESYSGOOD option available.
-   This function also sets linux_supports_tracesysgood_flag. */
+   This function also sets linux_supports_tracesysgood_flag.  */
 
 static int
 linux_supports_tracesysgood (int pid)
@@ -740,9 +740,9 @@ linux_child_post_startup_inferior (ptid_t ptid)
   check_for_thread_db ();
   /* We have to create the entry breakpoint here because
      if we have 'catch syscall' enabled, we ought to know
-     when to enable PTRACE_O_TRACESYSGOOD. Otherwise, we would
+     when to enable PTRACE_O_TRACESYSGOOD.  Otherwise, we would
      start catching syscalls from ld.so/libc (which is not
-     what we want). */
+     what we want).  */
   create_entry_breakpoint ();
 }
 
@@ -1403,7 +1403,7 @@ linux_nat_create_inferior (char *exec_file, char *allargs, char **env,
   int personality_orig = 0, personality_set = 0;
 #endif /* HAVE_PERSONALITY */
 
-  /* We are sarting, so we still have not passed through our entrypoint. */
+  /* We are sarting, so we still have not passed through our entrypoint.  */
   linux_passed_by_entrypoint_flag = 0;
 
   /* The fork_child mechanism is synchronous and calls target_wait, so
@@ -2036,7 +2036,7 @@ linux_handle_extended_wait (struct lwp_info *lp, int status,
       return 0;
     }
 
-  /* Used for 'catch syscall' feature. */
+  /* Used for 'catch syscall' feature.  */
   if (WSTOPSIG (status) == TRAP_IS_SYSCALL)
     {
       if (catch_syscall_enabled () == 0)
@@ -2673,7 +2673,7 @@ linux_nat_filter_event (int lwpid, int status, int options)
 
   /* Handle GNU/Linux's extended waitstatus for trace events.
      It is necessary to check if WSTOPSIG is signaling a that
-     the inferior is entering/exiting a system call. */
+     the inferior is entering/exiting a system call.  */
   if (WIFSTOPPED (status)
       && ((WSTOPSIG (status) == TRAP_IS_SYSCALL)
           || (WSTOPSIG (status) == SIGTRAP && status >> 16 != 0)))

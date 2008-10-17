@@ -136,7 +136,7 @@ struct target_waitstatus
     enum target_waitkind kind;
 
     /* Forked child pid, execd pathname, exit status, signal number or
-       syscall name. */
+       syscall name.  */
     union
       {
 	int integer;
@@ -887,7 +887,7 @@ int target_follow_fork (int follow_child);
      (*current_target.to_remove_syscall_catchpoint) (pid)
 
 /* Enable PTRACE_O_TRACESYSGOOD in the inferior.
-   This is mainly used for the "catch syscall" feature. */
+   This is mainly used for the "catch syscall" feature.  */
 
 #define target_enable_tracesysgood(ptid) \
      (*current_target.to_enable_tracesysgood) (ptid)

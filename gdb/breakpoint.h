@@ -34,11 +34,11 @@ struct block;
 #define	BREAKPOINT_MAX	16
 
 
-/* A number to represent wether we are catching any syscalls. */
+/* A number to represent wether we are catching any syscalls.  */
 
 #define CATCHING_ANY_SYSCALL (-1)
 
-/* Type of breakpoint. */
+/* Type of breakpoint.  */
 /* FIXME In the future, we should fold all other breakpoint-like things into
    here.  This includes:
 
@@ -133,12 +133,8 @@ enum bptype
        "fork" or "exec".) */
     bp_catch_exec,
 
-    /* This is not really a breakpoint, but the catchpoint which implements
-       the "catch syscall" functionality. */
-    bp_catch_syscall,
-
     /* This type is used to signal an internal breakpoint located at
-       the AT_ENTRY address. */
+       the AT_ENTRY address.  */
     bp_entry_breakpoint,
   };
 
@@ -493,7 +489,7 @@ struct breakpoint
        (i.e., when the user types "catch syscall <SYSCALL_NAME>".
 
        It stores the syscall number in case we are in the "filter mode",
-       or CATCHING_ANY_SYSCALL otherwise. */
+       or CATCHING_ANY_SYSCALL otherwise.  */
     int syscall_to_be_caught;
 
     /* Methods associated with this breakpoint.  */
@@ -578,7 +574,7 @@ enum bpstat_what_main_action
     BPSTAT_WHAT_CHECK_SHLIBS_RESUME_FROM_HOOK,
 
     /* This internal breakpoint is used syscall catchpoints only after the
-       shell and the dynamic linker have already ran. */
+       shell and the dynamic linker have already ran.  */
     BPSTAT_WHAT_ENTRY_BREAKPOINT,
 
     /* This is just used to keep track of how many enums there are.  */
@@ -932,24 +928,24 @@ extern int breakpoints_always_inserted_mode (void);
 extern void breakpoint_retire_moribund (void);
 
 /* Checks if we are catching syscalls or not.
-   Returns 0 if not, greater than 0 if we are. */
+   Returns 0 if not, greater than 0 if we are.  */
 extern int catch_syscall_enabled (void);
 
 /* Checks if we are catching syscalls with the specific
-   syscall_number. Used for "filtering" the catchpoints.
-   Returns 0 if not, greater than 0 if we are. */
+   syscall_number.  Used for "filtering" the catchpoints.
+   Returns 0 if not, greater than 0 if we are.  */
 extern int catching_syscall_number (int syscall_number);
 
 /* Function used to set an internal breakpoint at the AT_ENTRY
    (a.k.a. the entry point of the inferior).
 
    This is currently needed for us to know when to start setting
-   up catchpoints for syscalls in the inferior. If we don't do that,
+   up catchpoints for syscalls in the inferior.  If we don't do that,
    then we would set a "catch syscall" too early, which would
    catch syscalls from ld.so and/or libc (and we don't want that).
 
    Returns zero if there was an error setting this breakpoint,
-   or 1 if everything went OK. */
+   or 1 if everything went OK.  */
 extern int create_entry_breakpoint (void);
 
 
