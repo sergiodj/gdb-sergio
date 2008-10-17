@@ -948,5 +948,7 @@ extern int catching_syscall_number (int syscall_number);
    or 1 if everything went OK.  */
 extern int create_entry_breakpoint (void);
 
+/* Tell a breakpoint to be quiet.  */
+extern void make_breakpoint_silent (struct breakpoint *);
 
 #endif /* !defined (BREAKPOINT_H) */

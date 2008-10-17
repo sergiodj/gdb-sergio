@@ -1096,6 +1096,13 @@ record_currthread (ptid_t currthread)
 {
   general_thread = currthread;
 
+  /* When connecting to a target remote, or to a target
+     extended-remote which already was debugging an inferior, we may
+     not know about it yet.  Add it before adding its child thread, so
+     notifications are emitted in a sensible order.  */
+  if (!in_inferior_list (ptid_get_pid (currthread)))
+    add_inferior (ptid_get_pid (currthread));
+
   /* If this is a new thread, add it to GDB's thread list.
      If we leave it up to WFI to do this, bad things will happen.  */
 
@@ -1134,12 +1141,6 @@ record_currthread (ptid_t currthread)
       /* This is really a new thread.  Add it.  */
       add_thread (currthread);
     }
-
-  if (!in_inferior_list (ptid_get_pid (currthread)))
-    /* When connecting to a target remote, or to a target
-       extended-remote which already was debugging an inferior, we may
-       not know about it yet --- add it.  */
-    add_inferior (ptid_get_pid (currthread));
 }
 
 static char *last_pass_packet;
@@ -2098,13 +2099,16 @@ remote_threads_info (void)
 		{
 		  new_thread = read_ptid (bufp, &bufp);
 		  if (!ptid_equal (new_thread, null_ptid)
-		      && !in_thread_list (new_thread))
+		      && (!in_thread_list (new_thread)
+			  || is_exited (new_thread)))
 		    {
+		      /* When connected to a multi-process aware stub,
+			 "info threads" may show up threads of
+			 inferiors we didn't know about yet.  Add them
+			 now, and before adding any of its child
+			 threads, so notifications are emitted in a
+			 sensible order.  */
 		      if (!in_inferior_list (ptid_get_pid (new_thread)))
-			/* When connected to a multi-process aware
-			   stub, "info threads" may show up threads of
-			   inferiors we didn't know about yet.  Add
-			   them.  */
 			add_inferior (ptid_get_pid (new_thread));
 
 		      add_thread (new_thread);
@@ -3439,7 +3443,15 @@ remote_resume (ptid_t ptid, int step, enum target_signal siggnal)
     set_continue_thread (ptid);
 
   buf = rs->buf;
-  if (siggnal != TARGET_SIGNAL_0)
+  if (execution_direction == EXEC_REVERSE)
+    {
+      /* We don't pass signals to the target in reverse exec mode.  */
+      if (info_verbose && siggnal != TARGET_SIGNAL_0)
+	warning (" - Can't pass signal %d to target in reverse: ignored.\n",
+		 siggnal);
+      strcpy (buf, step ? "bs" : "bc");
+    }
+  else if (siggnal != TARGET_SIGNAL_0)
     {
       buf[0] = step ? 'S' : 'C';
       buf[1] = tohex (((int) siggnal >> 4) & 0xf);
@@ -3667,6 +3679,7 @@ remote_wait_as (ptid_t ptid, struct target_waitstatus *status)
   ptid_t event_ptid = null_ptid;
   ULONGEST addr;
   int solibs_changed = 0;
+  int replay_event = 0;
   char *buf, *p;
 
   status->kind = TARGET_WAITKIND_IGNORE;
@@ -3782,6 +3795,16 @@ Packet: '%s'\n"),
 		    solibs_changed = 1;
 		    p = p_temp;
 		  }
+		else if (strncmp (p, "replaylog", p1 - p) == 0)
+		  {
+		    /* NO_HISTORY event.
+		       p1 will indicate "begin" or "end", but
+		       it makes no difference for now, so ignore it.  */
+		    replay_event = 1;
+		    p_temp = strchr (p1 + 1, ';');
+		    if (p_temp)
+		      p = p_temp;
+		  }
 		else
 		  {
 		    /* Silently skip unknown optional info.  */
@@ -3827,6 +3850,8 @@ Packet: '%s'\n"),
     case 'S':		/* Old style status, just signal only.  */
       if (solibs_changed)
 	status->kind = TARGET_WAITKIND_LOADED;
+      else if (replay_event)
+            status->kind = TARGET_WAITKIND_NO_HISTORY;
       else
 	{
 	  status->kind = TARGET_WAITKIND_STOPPED;
@@ -7624,6 +7649,14 @@ remote_command (char *args, int from_tty)
   help_list (remote_cmdlist, "remote ", -1, gdb_stdout);
 }
 
+static int remote_target_can_reverse = 1;
+
+static int
+remote_can_execute_reverse (void)
+{
+  return remote_target_can_reverse;
+}
+
 static void
 init_remote_ops (void)
 {
@@ -7672,6 +7705,7 @@ Specify the serial device it is connected to\n\
   remote_ops.to_has_registers = 1;
   remote_ops.to_has_execution = 1;
   remote_ops.to_has_thread_control = tc_schedlock;	/* can lock scheduler */
+  remote_ops.to_can_execute_reverse = remote_can_execute_reverse;
   remote_ops.to_magic = OPS_MAGIC;
   remote_ops.to_memory_map = remote_memory_map;
   remote_ops.to_flash_erase = remote_flash_erase;
