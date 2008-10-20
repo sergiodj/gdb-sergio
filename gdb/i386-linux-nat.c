@@ -748,7 +748,13 @@ i386_linux_resume (ptid_t ptid, int step, enum target_signal signal)
 {
   int pid = PIDGET (ptid);
 
-  int request = PTRACE_CONT;
+  int request;
+
+  if (target_passed_by_entrypoint () > 0
+      && catch_syscall_enabled () > 0)
+   request = PTRACE_SYSCALL;
+  else
+    request = PTRACE_CONT;
 
   if (step)
     {

@@ -5005,7 +5005,7 @@ print_it_catch_syscall (struct breakpoint *b)
     gdbarch_syscall_name_from_number (current_gdbarch, b->syscall_number);
 
   annotate_catchpoint (b->number);
-  printf_filtered (_("\nCatchpoint %d (", b->number));
+  printf_filtered (_("\nCatchpoint %d ("), b->number);
 
   if (th_info->syscall_state == TARGET_WAITKIND_SYSCALL_ENTRY)
     printf_filtered (_("calling "));
@@ -5015,9 +5015,9 @@ print_it_catch_syscall (struct breakpoint *b)
   printf_filtered (_("syscall "));
 
   if (syscall_name == NULL)
-    printf_filtered (_("%d", b->syscall_number));
+    printf_filtered (_("%d"), b->syscall_number);
   else
-    printf_filtered (_("'%s ()'", syscall_name));
+    printf_filtered (_("'%s ()'"), syscall_name);
 
   printf_filtered (_("), "));
 
