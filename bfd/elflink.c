@@ -10095,22 +10095,7 @@ bfd_elf_final_link (bfd *abfd, struct bfd_link_info *info)
 	      if (info->relocatable || info->emitrelocations)
 		reloc_count = sec->reloc_count;
 	      else if (bed->elf_backend_count_relocs)
-		{
-		  Elf_Internal_Rela * relocs;
-
-		  relocs = _bfd_elf_link_read_relocs (sec->owner, sec,
-						      NULL, NULL,
-						      info->keep_memory);
-
-		  if (relocs != NULL)
-		    {
-		      reloc_count
-			= (*bed->elf_backend_count_relocs) (sec, relocs);
-
-		      if (elf_section_data (sec)->relocs != relocs)
-			free (relocs);
-		    }
-		}
+		reloc_count = (*bed->elf_backend_count_relocs) (info, sec);
 
 	      if (sec->rawsize > max_contents_size)
 		max_contents_size = sec->rawsize;
@@ -10756,16 +10741,16 @@ bfd_elf_final_link (bfd *abfd, struct bfd_link_info *info)
 		    && (h->root.type == bfd_link_hash_defined
 			|| h->root.type == bfd_link_hash_defweak))
 		  {
-		    dyn.d_un.d_val = h->root.u.def.value;
+		    dyn.d_un.d_ptr = h->root.u.def.value;
 		    o = h->root.u.def.section;
 		    if (o->output_section != NULL)
-		      dyn.d_un.d_val += (o->output_section->vma
+		      dyn.d_un.d_ptr += (o->output_section->vma
 					 + o->output_offset);
 		    else
 		      {
 			/* The symbol is imported from another shared
 			   library and does not apply to this one.  */
-			dyn.d_un.d_val = 0;
+			dyn.d_un.d_ptr = 0;
 		      }
 		    break;
 		  }
@@ -10844,6 +10829,7 @@ bfd_elf_final_link (bfd *abfd, struct bfd_link_info *info)
 	      else
 		type = SHT_RELA;
 	      dyn.d_un.d_val = 0;
+	      dyn.d_un.d_ptr = 0;
 	      for (i = 1; i < elf_numsections (abfd); i++)
 		{
 		  Elf_Internal_Shdr *hdr;
@@ -10856,9 +10842,9 @@ bfd_elf_final_link (bfd *abfd, struct bfd_link_info *info)
 			dyn.d_un.d_val += hdr->sh_size;
 		      else
 			{
-			  if (dyn.d_un.d_val == 0
-			      || hdr->sh_addr < dyn.d_un.d_val)
-			    dyn.d_un.d_val = hdr->sh_addr;
+			  if (dyn.d_un.d_ptr == 0
+			      || hdr->sh_addr < dyn.d_un.d_ptr)
+			    dyn.d_un.d_ptr = hdr->sh_addr;
 			}
 		    }
 		}
