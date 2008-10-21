@@ -458,6 +458,12 @@ i386_linux_syscall_number_from_name (struct gdbarch *gdbarch,
   return UNKNOWN_SYSCALL;
 }
 
+const char **
+i386_linux_get_syscalls_names (struct gdbarch *gdbarch)
+{
+  return syscalls_names;
+}
+
 /* The register sets used in GNU/Linux ELF core-dumps are identical to
    the register sets in `struct user' that are used for a.out
    core-dumps.  These are also used by ptrace(2).  The corresponding
@@ -587,6 +593,8 @@ i386_linux_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
                                         i386_linux_syscall_name_from_number);
   set_gdbarch_syscall_number_from_name (gdbarch,
                                         i386_linux_syscall_number_from_name);
+  set_gdbarch_get_syscalls_names (gdbarch,
+                                  i386_linux_get_syscalls_names);
 }
 
 /* Provide a prototype to silence -Wmissing-prototypes.  */

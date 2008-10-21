@@ -839,6 +839,14 @@ typedef int (gdbarch_syscall_number_from_name_ftype) (struct gdbarch *gdbarch, c
 extern int gdbarch_syscall_number_from_name (struct gdbarch *gdbarch, const char *syscall_name);
 extern void set_gdbarch_syscall_number_from_name (struct gdbarch *gdbarch, gdbarch_syscall_number_from_name_ftype *syscall_number_from_name);
 
+/* Returns the array containing the syscalls names for the architecture. */
+
+extern int gdbarch_get_syscalls_names_p (struct gdbarch *gdbarch);
+
+typedef const char ** (gdbarch_get_syscalls_names_ftype) (struct gdbarch *gdbarch);
+extern const char ** gdbarch_get_syscalls_names (struct gdbarch *gdbarch);
+extern void set_gdbarch_get_syscalls_names (struct gdbarch *gdbarch, gdbarch_get_syscalls_names_ftype *get_syscalls_names);
+
 /* Definition for an unknown syscall, used basically in error-cases. */
 #define UNKNOWN_SYSCALL (-1)
 

@@ -721,6 +721,10 @@ M:const char *:syscall_name_from_number:int syscall_number:syscall_number
 # This function must return the syscall number if found, or
 # UNKNOWN_SYSCALL if not found.
 M:int:syscall_number_from_name:const char *syscall_name:syscall_name
+
+# Returns the array containing the syscalls names for the architecture.
+M:const char **:get_syscalls_names:void:
+
 EOF
 }
 

@@ -1216,6 +1216,19 @@ ppc64_linux_syscall_number_from_name (struct gdbarch *gdbarch,
   return UNKNOWN_SYSCALL;
 }
 
+const char **
+ppc_linux_get_syscalls_names (struct gdbarch *gdbarch)
+{
+  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+
+  /* Make sure we're in a 32- or 64-bit machine */
+  gdb_assert (tdep->wordsize == 4 || tdep->wordsize == 8);
+
+  return (tdep->wordsize == 4
+          ? syscalls_names
+          : syscalls_names64);
+}
+
 static void
 ppc_linux_write_pc (struct regcache *regcache, CORE_ADDR pc)
 {
@@ -1288,6 +1301,7 @@ ppc_linux_init_abi (struct gdbarch_info info,
   set_gdbarch_write_pc (gdbarch, ppc_linux_write_pc);
 
   set_gdbarch_get_syscall_number (gdbarch, ppc_linux_get_syscall_number);
+  set_gdbarch_get_syscalls_names (gdbarch, ppc_linux_get_syscalls_names);
 
   if (tdep->wordsize == 4)
     {

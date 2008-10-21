@@ -243,6 +243,7 @@ struct gdbarch
   gdbarch_get_syscall_number_ftype *get_syscall_number;
   gdbarch_syscall_name_from_number_ftype *syscall_name_from_number;
   gdbarch_syscall_number_from_name_ftype *syscall_number_from_name;
+  gdbarch_get_syscalls_names_ftype *get_syscalls_names;
 };
 
 
@@ -377,6 +378,7 @@ struct gdbarch startup_gdbarch =
   0,  /* get_syscall_number */
   0,  /* syscall_name_from_number */
   0,  /* syscall_number_from_name */
+  0,  /* get_syscalls_names */
   /* startup_gdbarch() */
 };
 
@@ -632,6 +634,7 @@ verify_gdbarch (struct gdbarch *gdbarch)
   /* Skip verify of get_syscall_number, has predicate */
   /* Skip verify of syscall_name_from_number, has predicate */
   /* Skip verify of syscall_number_from_name, has predicate */
+  /* Skip verify of get_syscalls_names, has predicate */
   buf = ui_file_xstrdup (log, &dummy);
   make_cleanup (xfree, buf);
   if (strlen (buf) > 0)
@@ -846,6 +849,12 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
   fprintf_unfiltered (file,
                       "gdbarch_dump: get_syscall_number = <0x%lx>\n",
                       (long) gdbarch->get_syscall_number);
+  fprintf_unfiltered (file,
+                      "gdbarch_dump: gdbarch_get_syscalls_names_p() = %d\n",
+                      gdbarch_get_syscalls_names_p (gdbarch));
+  fprintf_unfiltered (file,
+                      "gdbarch_dump: get_syscalls_names = <0x%lx>\n",
+                      (long) gdbarch->get_syscalls_names);
   fprintf_unfiltered (file,
                       "gdbarch_dump: have_nonsteppable_watchpoint = %s\n",
                       plongest (gdbarch->have_nonsteppable_watchpoint));
@@ -3334,6 +3343,30 @@ set_gdbarch_syscall_number_from_name (struct gdbarch *gdbarch,
                                       gdbarch_syscall_number_from_name_ftype syscall_number_from_name)
 {
   gdbarch->syscall_number_from_name = syscall_number_from_name;
+}
+
+int
+gdbarch_get_syscalls_names_p (struct gdbarch *gdbarch)
+{
+  gdb_assert (gdbarch != NULL);
+  return gdbarch->get_syscalls_names != NULL;
+}
+
+const char **
+gdbarch_get_syscalls_names (struct gdbarch *gdbarch)
+{
+  gdb_assert (gdbarch != NULL);
+  gdb_assert (gdbarch->get_syscalls_names != NULL);
+  if (gdbarch_debug >= 2)
+    fprintf_unfiltered (gdb_stdlog, "gdbarch_get_syscalls_names called\n");
+  return gdbarch->get_syscalls_names (gdbarch);
+}
+
+void
+set_gdbarch_get_syscalls_names (struct gdbarch *gdbarch,
+                                gdbarch_get_syscalls_names_ftype get_syscalls_names)
+{
+  gdbarch->get_syscalls_names = get_syscalls_names;
 }
 
 
