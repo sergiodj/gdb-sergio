@@ -5030,6 +5030,9 @@ print_it_catch_syscall (struct breakpoint *b)
 static void
 print_one_catch_syscall (struct breakpoint *b, CORE_ADDR *last_addr)
 {
+  const char *syscall_name =
+    gdbarch_syscall_name_from_number (current_gdbarch, b->syscall_number);
+
   /* Field 4, the address, is omitted (which makes the columns
      not line up too nicely with the headers, but the effect
      is relatively readable).  */
@@ -5038,9 +5041,12 @@ print_one_catch_syscall (struct breakpoint *b, CORE_ADDR *last_addr)
   annotate_field (5);
   ui_out_text (uiout, "syscall \"");
   if (b->syscall_number != UNKNOWN_SYSCALL)
-    ui_out_field_string (uiout, "what",
-                         gdbarch_syscall_name_from_number (current_gdbarch,
-                                                          b->syscall_number));
+    {
+      if (syscall_name != NULL)
+        ui_out_field_string (uiout, "what", syscall_name);
+      else
+        ui_out_field_int (uiout, "what", b->syscall_number);
+    }
   else
     ui_out_field_string (uiout, "what", "<unknown syscall>");
   ui_out_text (uiout, "\" ");
