@@ -67,7 +67,7 @@ proc check_call_to_syscall { syscall_name } {
     global gdb_prompt
 
     set thistest "program has called '$syscall_name'"
-    gdb_test "continue" "Catchpoint .*(called syscall .$syscall_name ().).*in.*from.*" $thistest
+    gdb_test "continue" "Catchpoint .*(calling syscall .$syscall_name ().).*" $thistest
 
     # Checking if the syscall is reported to be caught in
     # 'info breakpoints'.
@@ -79,7 +79,7 @@ proc check_return_from_syscall { syscall_name } {
     global gdb_prompt
 
     set thistest "syscall '$syscall_name' has returned"
-    gdb_test "continue" "Catchpoint .*(returned from syscall .$syscall_name ().).*in.*from.*" $thistest
+    gdb_test "continue" "Catchpoint .*(returned from syscall .$syscall_name ().).*" $thistest
 
     # Checking if the syscall is reported to be caught in
     # 'info breakpoints'.
