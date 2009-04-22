@@ -166,6 +166,9 @@ INTL_CFLAGS = @INCINTL@
 TARGET_SYSTEM_ROOT = @TARGET_SYSTEM_ROOT@
 TARGET_SYSTEM_ROOT_DEFINE = @TARGET_SYSTEM_ROOT_DEFINE@
 
+# Did the user give us a --with-gdb-datadir option?
+GDB_DATADIR_PATH = @GDB_DATADIR_PATH@
+
 # Helper code from gnulib.
 LIBGNU = gnulib/libgnu.a
 INCGNU = -I$(srcdir)/gnulib -Ignulib
@@ -464,6 +467,7 @@ TARGET_OBS = @TARGET_OBS@
 # All target-dependent objects files that require 64-bit CORE_ADDR
 # (used with --enable-targets=all --enable-64-bit-bfd).
 ALL_64_TARGET_OBS = \
+	linux-tdep.o \
 	alphabsd-tdep.o alphafbsd-tdep.o alpha-linux-tdep.o alpha-mdebug-tdep.o \
 	alphanbsd-tdep.o alphaobsd-tdep.o alpha-osf1-tdep.o alpha-tdep.o \
 	amd64fbsd-tdep.o amd64-darwin-tdep.o amd64-dicos-tdep.o \
@@ -476,6 +480,7 @@ ALL_64_TARGET_OBS = \
 
 # All other target-dependent objects files (used with --enable-targets=all).
 ALL_TARGET_OBS = \
+	linux-tdep.o \
 	armbsd-tdep.o arm-linux-tdep.o armnbsd-tdep.o armobsd-tdep.o \
 	arm-tdep.o arm-wince-tdep.o \
 	avr-tdep.o \
@@ -677,6 +682,7 @@ SFILES = ada-exp.y ada-lang.c ada-typeprint.c ada-valprint.c ada-tasks.c \
 	wrapper.c \
 	xml-tdesc.c xml-support.c \
 	inferior.c gdb_usleep.c \
+	xml-syscall.c \
 	record.c
 
 LINTFILES = $(SFILES) $(YYFILES) $(CONFIG_SRCS) init.c
@@ -687,7 +693,7 @@ LINTFILES = $(SFILES) $(YYFILES) $(CONFIG_SRCS) init.c
 # wrong if TAGS has files twice).  Because this is tricky to get
 # right, it is probably easiest just to list .h files here directly.
 
-HFILES_NO_SRCDIR = osf-share/cma_debug_client.h	\
+HFILES_NO_SRCDIR = osf-share/cma_debug_client.h	linux-tdep.h \
 osf-share/HP800/cma_thread_io.h osf-share/cma_sequence.h \
 osf-share/cma_mutex.h osf-share/cma_semaphore_defs.h \
 osf-share/cma_list.h osf-share/cma_handle.h osf-share/cma_stack.h \
@@ -746,7 +752,7 @@ config/rs6000/nm-rs6000.h top.h bsd-kvm.h gdb-stabs.h reggroups.h \
 annotate.h sim-regno.h dictionary.h dfp.h main.h frame-unwind.h	\
 remote-fileio.h i386-linux-tdep.h vax-tdep.h objc-lang.h \
 sentinel-frame.h bcache.h symfile.h windows-tdep.h linux-tdep.h \
-gdb_usleep.h
+xml-syscall.h gdb_usleep.h
 
 # Header files that already have srcdir in them, or which are in objdir.
 
@@ -826,9 +832,15 @@ COMMON_OBS = $(DEPFILES) $(CONFIG_OBS) $(YYOBJ) \
 	trad-frame.o \
 	tramp-frame.o \
 	solib.o solib-null.o \
-	prologue-value.o memory-map.o xml-support.o \
+	prologue-value.o memory-map.o xml-support.o xml-syscall.o \
 	target-descriptions.o target-memory.o xml-tdesc.o xml-builtin.o \
 	inferior.o osdata.o gdb_usleep.o record.o
+
+# Definitions for the syscall's XML files and dir
+XML_SYSCALLS_DIR = syscalls/
+XML_SYSCALLS_FILES = gdb-syscalls.dtd \
+		     ppc-linux.xml ppc64-linux.xml \
+		     i386-linux.xml amd64-linux.xml
 
 TSOBS = inflow.o
 
@@ -863,10 +875,40 @@ generated_files = config.h observer.h observer.inc ada-lex.c \
 	$(COMPILE) $<
 	$(POSTCOMPILE)
 
-all: gdb$(EXEEXT) $(CONFIG_ALL)
+all: gdb$(EXEEXT) $(CONFIG_ALL) xml-syscall-copy
 	@$(MAKE) $(FLAGS_TO_PASS) DO=all "DODIRS=`echo $(SUBDIRS) | sed 's/testsuite//'`" subdir_do
 .PHONY: all-tui
 all-tui: $(TUI)$(EXEEXT)
+
+# This is needed for running GDB from the build directory
+.PHONY: xml-syscall-copy
+xml-syscall-copy:
+	if [ "`cd $(srcdir) && pwd`" != "`pwd`" ] ; then \
+	  mkdir -p ./$(XML_SYSCALLS_DIR) ; \
+	  list='$(XML_SYSCALLS_FILES)' ; \
+ 	  for file in $$list ; do \
+	    f=$(srcdir)/$(XML_SYSCALLS_DIR)/$$file ; \
+	    if test -f $$f ; then \
+	      $(INSTALL_DATA) $$f \
+	    	  ./$(XML_SYSCALLS_DIR) ; \
+	    fi ; \
+	  done ; \
+	fi ;
+
+# This target is responsible for properly installing the syscalls'
+# XML files in the system.
+.PHONY: xml-syscall-install
+xml-syscall-install:
+	$(SHELL) $(srcdir)/../mkinstalldirs \
+		$(DESTDIR)$(GDB_DATADIR_PATH)/$(XML_SYSCALLS_DIR) ; \
+	list='$(XML_SYSCALLS_FILES)' ; \
+	for file in $$list ; do \
+	  f=$(srcdir)/$(XML_SYSCALLS_DIR)/$$file ; \
+	  if test -f $$f ; then \
+	    $(INSTALL_DATA) $$f \
+	    	$(DESTDIR)$(GDB_DATADIR_PATH)/$(XML_SYSCALLS_DIR) ; \
+	  fi ; \
+	done ;
 
 installcheck:
 
@@ -923,8 +965,11 @@ gdb.z:gdb.1
 # source file and doesn't care about rebuilding or just wants to save the
 # time it takes for make to check that all is up to date.
 # install-only is intended to address that need.
-install: all install-only
-install-only: $(CONFIG_INSTALL)
+install: all install-only 
+
+# The "install-only" target also installs the syscalls' XML files in
+# the system.
+install-only: $(CONFIG_INSTALL) xml-syscall-install
 	transformed_name=`t='$(program_transform_name)'; \
 			  echo gdb | sed -e "$$t"` ; \
 		if test "x$$transformed_name" = x; then \
@@ -1335,6 +1380,7 @@ force_update:
 MAKEOVERRIDES=
 
 ALLDEPFILES = \
+	linux-tdep.c \
 	aix-thread.c \
 	alpha-nat.c alphabsd-nat.c alpha-linux-nat.c \
 	alpha-tdep.c alpha-mdebug-tdep.c \

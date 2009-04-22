@@ -3,6 +3,35 @@
 
 *** Changes since GDB 6.8
 
+* GDB now has the new command `catch syscall'.  It can be used to
+catch when the inferior calls a system call, or when the system call
+returns.  Also, you can specify which system calls you would like GDB
+to catch (or issue only a `catch syscall' without arguments, which will
+make GDB catch every system call).  For instance, if you would like to
+catch the system call close, you would issue a:
+
+    (gdb) catch syscall close
+
+Then, when the program is running again, GDB will keep track of all
+the system calls the inferior is calling, and will stop the execution
+if the system call called or returned is equal to the system call
+that you asked it to catch (note that if you did not provide any system
+call, then GDB would stop on any system call).  After stopping the
+inferior, GDB will print something like:
+
+    Catchpoint 1 (call to syscall 'close'),
+    	0xb7ff831d in ?? () from /lib/ld-linux.so.2
+
+It indicates that the correct system call was caught.  If you choose
+to continue the execution of the inferior from this point, then you
+should see GDB catching the return of this system call, like that:
+
+    Catchpoint 1 (returned from syscall 'close'),
+	   0xb7ff831d in ?? () from /lib/ld-linux.so.2
+
+This feature is available with a native GDB running on the Linux Kernel,
+under the following architectures: x86, PowerPC and PowerPC64.
+
 * Tracepoints may now be conditional.  The syntax is as for
 breakpoints; either an "if" clause appended to the "trace" command,
 or the "condition" command is available.  GDB sends the condition to
